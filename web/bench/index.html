@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test Runner — banc d'essai</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400..600&display=swap">
+<style>
+  :root{
+    color-scheme: light dark;
+    --paper:#EBEEF3; --surface:#F9FAFC; --raised:#FFFFFF; --ink:#0F141C; --muted:#596373;
+    --line:#D2D9E3; --line-strong:#B7C1CE; --accent:#22409E; --accent-soft:#E2E8F8;
+    --live:#0F7A57; --live-soft:#E0F2EA; --alert:#A3341B; --alert-soft:#FBE6E0;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#0B0F16; --surface:#131A25; --raised:#182231; --ink:#E6EBF3; --muted:#909CAF;
+      --line:#212A38; --line-strong:#2F3A4A; --accent:#94ACFF; --accent-soft:#1A2440;
+      --live:#4CC79A; --live-soft:#12281F; --alert:#F08A6C; --alert-soft:#2C1712;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0B0F16; --surface:#131A25; --raised:#182231; --ink:#E6EBF3; --muted:#909CAF;
+    --line:#212A38; --line-strong:#2F3A4A; --accent:#94ACFF; --accent-soft:#1A2440;
+    --live:#4CC79A; --live-soft:#12281F; --alert:#F08A6C; --alert-soft:#2C1712;
+  }
+
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; min-height:100vh; background:var(--paper); color:var(--ink);
+    font-family:"Source Serif 4", Georgia, serif; font-size:1rem; line-height:1.6;
+    display:flex; flex-direction:column; gap:1rem; padding:clamp(1rem,3vw,2rem);
+    max-width:64rem;
+  }
+  a{ color:var(--accent); }
+  a:focus-visible, button:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  header{ display:flex; flex-wrap:wrap; align-items:baseline; gap:.6rem 1.25rem; }
+  h1{
+    font-family:Archivo, "Helvetica Neue", Arial, sans-serif; font-weight:700;
+    letter-spacing:-.03em; font-size:clamp(1.5rem,4vw,2.1rem); margin:0;
+  }
+  .eyebrow{
+    font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:.72rem; font-weight:500;
+    letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:0;
+  }
+  .note{ color:var(--muted); font-size:.92rem; max-width:70ch; margin:0; }
+
+  .bar{
+    display:flex; flex-wrap:wrap; align-items:center; gap:.75rem;
+    border:1px solid var(--line); border-radius:3px; background:var(--surface); padding:.7rem .8rem;
+  }
+  #run{
+    font-family:Archivo, "Helvetica Neue", Arial, sans-serif; font-weight:600;
+    font-size:.82rem; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--raised); background:var(--accent); border:1px solid var(--accent);
+    border-radius:3px; padding:.5rem 1rem; cursor:pointer;
+  }
+  #run:hover:not(:disabled){ filter:brightness(1.12); }
+  #run:disabled{ opacity:.55; cursor:progress; }
+  #summary{
+    font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:.78rem;
+    font-variant-numeric:tabular-nums; color:var(--muted); margin:0;
+  }
+  #summary[data-tone="ok"]{ color:var(--live); }
+  #summary[data-tone="alerte"]{ color:var(--alert); }
+
+  .group{
+    font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:.66rem; font-weight:500;
+    letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
+    margin:1.1rem 0 .35rem; padding:0;
+  }
+  .group:first-child{ margin-top:0; }
+
+  .check{
+    border:1px solid var(--line); border-left-width:3px; border-left-color:var(--line-strong);
+    border-radius:3px; background:var(--surface); margin-bottom:.3rem;
+  }
+  .check[data-state="pass"]{ border-left-color:var(--live); }
+  .check[data-state="fail"]{ border-left-color:var(--alert); background:var(--alert-soft); }
+  .check[data-state="running"]{ border-left-color:var(--accent); background:var(--accent-soft); }
+
+  .check-head{
+    display:flex; align-items:baseline; gap:.7rem; width:100%; text-align:left;
+    font:inherit; color:var(--ink); background:none; border:0; cursor:pointer;
+    padding:.5rem .7rem; font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:.8rem;
+  }
+  /* La case est dessinée, pas écrite : ☑ et ☒ manquent à la plupart des
+     polices monospace et retombent en tofu. */
+  .check-status{
+    width:.85rem; height:.85rem; flex:none; align-self:center; position:relative;
+    border:1.5px solid var(--line-strong); border-radius:2px;
+  }
+  .check[data-state="pass"] .check-status{ border-color:var(--live); background:var(--live); }
+  .check[data-state="pass"] .check-status::after{
+    content:""; position:absolute; left:.26rem; top:.05rem;
+    width:.2rem; height:.44rem; border:solid var(--surface); border-width:0 2px 2px 0;
+    transform:rotate(42deg);
+  }
+  .check[data-state="fail"] .check-status{ border-color:var(--alert); background:var(--alert); }
+  .check[data-state="fail"] .check-status::before,
+  .check[data-state="fail"] .check-status::after{
+    content:""; position:absolute; left:.32rem; top:.05rem;
+    width:2px; height:.55rem; background:var(--alert-soft);
+  }
+  .check[data-state="fail"] .check-status::before{ transform:rotate(45deg); }
+  .check[data-state="fail"] .check-status::after{ transform:rotate(-45deg); }
+  .check[data-state="running"] .check-status{ border-color:var(--accent); }
+  .check[data-state="running"] .check-status::after{
+    content:""; position:absolute; inset:2px; background:var(--accent); border-radius:1px;
+    animation:pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes pulse{ 0%,100%{ opacity:.25; } 50%{ opacity:1; } }
+  @media (prefers-reduced-motion:reduce){
+    .check[data-state="running"] .check-status::after{ animation:none; opacity:.7; }
+  }
+  .check-label{ flex:1; min-width:0; font-family:"Source Serif 4", Georgia, serif; font-size:.98rem; }
+  .check-verdict{ flex:none; font-weight:500; letter-spacing:.06em; color:var(--muted); }
+  .check[data-state="pass"] .check-verdict{ color:var(--live); }
+  .check[data-state="fail"] .check-verdict{ color:var(--alert); }
+  .check-timing{ flex:none; width:5rem; text-align:right; color:var(--muted); font-variant-numeric:tabular-nums; }
+
+  .check-detail{ padding:0 .7rem .7rem 2.4rem; border-top:1px solid var(--line); padding-top:.6rem; }
+  .check-about{ margin:0 0 .4rem; color:var(--muted); font-size:.9rem; font-style:italic; }
+  .check-said{ margin:0 0 .6rem; font-size:.95rem; }
+  .check-metrics{
+    display:grid; grid-template-columns:minmax(8rem,auto) 1fr; gap:.15rem .9rem;
+    margin:0; font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:.74rem;
+    font-variant-numeric:tabular-nums;
+  }
+  .check-metrics dt{ color:var(--muted); }
+  .check-metrics dd{ margin:0; overflow-wrap:anywhere; }
+
+  @media (max-width:34rem){
+    .check-timing{ width:4rem; }
+    .check-detail{ padding-left:.7rem; }
+    .check-metrics{ grid-template-columns:1fr; }
+    .check-metrics dd{ margin-bottom:.35rem; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <p class="eyebrow">claude-ai-tests · tranche T7</p>
+    <h1>Test Runner</h1>
+    <p class="eyebrow"><a href="../">← banc d'essai</a> · <a href="../game/">le jeu →</a></p>
+  </header>
+
+  <p class="note">Les mêmes vérifications que la CI, dans votre navigateur. Ce ne sont pas deux listes qui se ressemblent : <code>src/bench/checks.ts</code> définit des fonctions ordinaires, et deux harnais les exécutent — <code>node --test</code> d'un côté, cette page de l'autre. Un vert ici et un vert en CI parlent du même code.</p>
+
+  <div class="bar">
+    <button id="run" type="button">Tout lancer</button>
+    <p id="summary" data-tone="neutre" role="status">chargement…</p>
+  </div>
+
+  <div id="board"></div>
+
+  <p class="note" id="thread"></p>
+
+  <p class="note">Cliquez une ligne pour lire ce qu'elle a mesuré. Un échec s'ouvre tout seul : un rouge sans chiffres ne dit pas si l'on est passé de 0,2 à 0,3 ou de 0,2 à 400.</p>
+
+  <p class="note"><strong>Le scénario #018 est le garde-fou.</strong> Une graine, quatre joueurs, neuf actions datées, neuf cents pas — et l'empreinte SHA-256 de l'état final, figée dans le dépôt. Toute modification du moteur qui change le monde fait rougir cette ligne, avec le nombre d'entités pour dire de quel côté penche la régression. Un test vérifie d'ailleurs que le garde-fou garde : on décale la graine d'une unité, et le verdict doit basculer.</p>
+
+  <p class="note"><strong>Le réseau est éprouvé sans serveur.</strong> Le transport en mémoire tire latence, gigue, pertes, doublons et désordre d'un générateur à graine : une perte de paquet qui fait échouer une vérification se reproduit à l'identique. C'est ce qui permet de traverser 20 ms à 500 ms de ping et 0 à 20 % de pertes en une demi-seconde de calcul, là où un vrai réseau demanderait des minutes et ne se rejouerait jamais.</p>
+
+  <p class="note"><em>Ce que le banc a trouvé en s'écrivant</em> : un <code>join</code> perdu laissait le joueur hors du monde pour toujours — rien ne le rejouait, et il fallait 5 % de pertes pour s'en apercevoir. Et le personnage d'un joueur déconnecté filait tout droit à l'infini, parce qu'aucune demande ne lui parvenait plus, donc aucun freinage : lâcher les touches est une demande, pas une absence de demande. Deux vraies pannes, invisibles à l'œil, trouvées en mesurant.</p>
+
+  <p class="note"><strong>Puis une troisième, celle-là bien visible.</strong> Le personnage d'un autre joueur saccadait : jusqu'à 32 unités de saut là où un pas normal en fait 6,3. Deux causes. Le client rejouait les autres sans savoir sur quoi ils appuyaient — l'état porte maintenant les dernières demandes appliquées, et les corrections tombent de 80 à zéro. Et l'horloge du client se recale dix fois par seconde, ce qui déplace les autres de trois pas d'un coup — un décalage <em>purement visuel</em> encaisse ce saut et le laisse fondre, sans jamais toucher à la simulation. La ligne « Fluidité du joueur distant » mesure ce qu'il en reste.</p>
+
+  <p class="note"><em>Réserve honnête</em> : « pas client par seconde » n'est pas un nombre d'images par seconde. Aucun rendu n'a lieu ici — c'est ce qu'un client peut <em>simuler</em>, donc le plafond au-dessus duquel aucune boucle d'affichage ne montera. Le vrai chiffre d'images se lit sur <a href="../game/">la page du jeu</a>.</p>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

@@ -69,7 +69,7 @@ Trois points portent tout le reste :
 
 **Les demandes sont appliquées au pas qu'elles portent**, jamais à celui où le paquet arrive. Sinon la chronologie de l'hôte serait décalée de celle du client et aucune prédiction ne tomberait juste.
 
-**Le client garde une avance** sur le dernier état reçu. Sans elle, ses demandes arrivent datées d'un pas déjà joué et sont rejetées. L'avance est constante ici ; l'estimer d'après la latence est l'étape suivante et n'est pas faite.
+**Le client garde une avance** sur le dernier état reçu. Sans elle, ses demandes arrivent datées d'un pas déjà joué et sont rejetées. Cette avance part d'une valeur fixe mais **ne le reste pas** : le rejeu des demandes non confirmées la fait croître d'elle-même jusqu'à couvrir l'aller-retour. Mesurée par le banc : 6 pas à 20 ms de latence, 55 pas à 500 ms. Personne ne l'a réglée — c'est une propriété de la réconciliation, pas un paramètre.
 
 **Les demandes d'un pas sont triées par joueur** avant d'être appliquées. L'ordre d'arrivée des paquets ne doit pas changer le résultat.
 
@@ -79,7 +79,61 @@ Ce qui se mesure : un client ne se voit **jamais** corrigé, quelle que soit la 
 
 ### Ce que le transport est, et n'est pas
 
-`BroadcastChannel` relie deux onglets du même navigateur. **Ce n'est pas du multijoueur par Internet** — c'est un banc d'essai du netcode sur un site statique, où aucun serveur ne peut vivre. Le netcode passe par une interface `Transport` : un WebSocket ou un WebRTC s'y substitue sans toucher au reste. `MemoryNetwork` en est la troisième implémentation, avec une latence qu'on avance à la main — c'est elle qui rend le netcode testable sans navigateur.
+`BroadcastChannel` relie deux onglets du même navigateur. **Ce n'est pas du multijoueur par Internet** — c'est un banc d'essai du netcode sur un site statique, où aucun serveur ne peut vivre. Le netcode passe par une interface `Transport` : un WebSocket ou un WebRTC s'y substitue sans toucher au reste.
+
+`MemoryNetwork` en est la troisième implémentation, et la seule qui puisse mentir sur commande : latence, gigue, pertes, doublons, désordre, le tout **tiré d'un générateur à graine**. Une perte de paquet qui fait échouer une vérification se reproduit à l'identique — un banc dont les échecs ne se reproduisent pas ne sert à rien.
+
+## Le banc de vérification
+
+`src/bench/checks.ts` définit dix-huit vérifications comme des **fonctions ordinaires** : ni `node:test`, ni rien du navigateur. Deux harnais les exécutent — `test/bench.test.ts` sous Node, et la page [Test Runner](https://kyraav12.github.io/claude-ai-tests/bench/) dans un fil séparé. Deux listes qui se ressemblent finissent toujours par diverger, et c'est alors le banc qui ment ; ici il n'y en a qu'une.
+
+Chaque vérification rend un verdict **et ses mesures**. Un rouge sans chiffres ne dit pas si l'on est passé de 0,2 à 0,3 ou de 0,2 à 400.
+
+### Le scénario, et son empreinte
+
+Un scénario est une graine, des joueurs, une suite d'actions datées — rien d'autre. L'état final s'en déduit, et son empreinte SHA-256 le résume en soixante-quatre caractères. `SCENARIO_018` (graine 847291, quatre joueurs, neuf actions, neuf cents pas) porte son empreinte **figée dans le dépôt** : toute modification du moteur qui change le monde la casse, et le nombre d'entités dit de quel côté penche la régression.
+
+Un test vérifie que le garde-fou garde : on décale la graine d'une unité et le verdict doit basculer. Une empreinte qui accepterait tout ne protégerait de rien.
+
+`src/bench/hash.ts` est un SHA-256 écrit à la main, synchrone. Node offre `node:crypto`, le navigateur seulement `crypto.subtle`, qui est asynchrone : emprunter les deux donnerait deux chemins de code et une empreinte incomparable. Un test le confronte à `node:crypto` sur des entrées variées, accents et paires de substitution comprises.
+
+### Ce qui est mesuré
+
+| | |
+|---|---|
+| Montée en charge | 3 → 8 joueurs : tick hôte de 900 à 400 pas/s (le temps réel en demande 60), bande passante de 64 à 131 kio/s |
+| Latence | 20, 50, 100, 200, 500 ms — écart final sous 0,3 unité partout |
+| Pertes | 0, 1, 5, 10, 20 % — la partie converge à chaque taux |
+| Dégradations | doublons 20 %, désordre 30 %, gigue ±6 pas, et les cinq à la fois |
+| Déconnexion | départ annoncé et coupure sèche, personnage conservé, inventaire intact |
+| Reconnexion | même entité retrouvée, empreinte d'état identique à celle de l'hôte |
+| Fluidité | 50, 100, 200 ms : aucune saccade à l'affichage ; 500 ms : pire saut plafonné à deux fois le pas normal |
+
+**Ce qui cédera en premier, et le banc le dit :** la bande passante croît linéairement avec le nombre de joueurs, parce que l'état complet est diffusé dix fois par seconde — 9,6 kio par paquet à huit joueurs. Le tick, lui, garde un facteur cinq de marge. C'est l'encodage différentiel qu'il faudra écrire, pas l'optimisation de la boucle.
+
+### Deux pannes trouvées en mesurant
+
+**Un `join` perdu laissait le joueur hors du monde pour toujours.** Le client l'annonçait une seule fois, à la construction ; rien ne le rejouait. Sans pertes on ne le voit jamais — il a fallu 5 % pour que le banc s'arrête sur une entité absente. Le client redemande maintenant son entrée jusqu'à se voir dans l'état d'autorité.
+
+**Le personnage d'un joueur déconnecté filait tout droit à l'infini.** L'hôte ne lui envoyait plus aucune demande, donc `applyControl` ne s'exécutait pas, donc aucun freinage. Un commentaire du code affirmait pourtant qu'il « ralentit et s'arrête ». Lâcher les touches est une **demande**, pas une absence de demande : l'hôte en pousse une vide, et le personnage s'arrête.
+
+### Une réserve sur les chiffres
+
+« Pas client par seconde » n'est pas un nombre d'images par seconde : aucun rendu n'a lieu dans le banc. C'est ce qu'un client peut *simuler*, donc le plafond au-dessus duquel aucune boucle d'affichage ne montera. Le vrai chiffre d'images se lit sur la page du jeu.
+
+## Voir bouger les autres
+
+Un client n'a jamais tort sur lui-même — c'est vérifié à toutes les latences. Sur les **autres**, il l'était, et cela se voyait : leur personnage saccadait dix fois par seconde. Deux causes, deux correctifs, tous deux mesurés.
+
+**L'état porte désormais les dernières demandes appliquées.** Le client rejouait les autres personnages sans savoir sur quoi ils appuyaient : ni accélération, ni freinage, une glissade en ligne droite entre deux états. Il reçoit maintenant, avec chaque état, la demande que l'hôte a appliquée pour chacun, et les rejoue avec les mêmes forces. Le compteur de corrections passe de 80 à **0** sur six cents pas sans latence. Seul le déplacement est extrapolé : rejouer une pose ferait clignoter chez le client une construction que l'autorité effacerait.
+
+**Ce qui reste est absorbé à l'affichage.** L'horloge du client se recale une dizaine de fois par seconde — le nombre de pas rejoués varie d'un état à l'autre — et le personnage distant y gagne ou perd trois pas d'un coup. Mesuré dans le navigateur, à deux onglets : jusqu'à **32 unités** de saut là où un pas normal en fait 6,3.
+
+La réponse n'est pas de toucher à la simulation : le déterminisme, le rejeu et les empreintes en dépendent. `src/net/smoothing.ts` garde un **décalage purement visuel** par entité. Au moment de la correction, le décalage encaisse le saut pour que l'image ne bouge pas, puis fond en deux dixièmes de seconde — avec un plafond de vitesse de rattrapage, sans lequel un gros décalage se paierait d'un élan qu'aucun personnage ne pourrait courir. Une fois le décalage nul, l'affichage est de nouveau exactement la simulation : ni retard permanent, ni mollesse ajoutée.
+
+Résultat mesuré : **aucune saccade jusqu'à 200 ms** de latence, et à 500 ms le pire saut tombe de 355 à 13 unités. Le client ne se lisse jamais lui-même — ce serait ajouter de la latence ressentie à chaque touche, exactement ce que la prédiction évite.
+
+Ce qui demeure, et qui n'est pas résolu ici : l'horloge du client saute encore. La gestion du temps côté client — l'étirer et le contracter d'un pas à la fois plutôt que de le recaler d'un bond — est la vraie réponse, et elle n'est pas écrite. Une tentative de rendre l'horloge monotone a été mesurée puis abandonnée : elle créait cent recalages à 100 ms là où il n'y en avait aucun.
 
 ## Récolter
 

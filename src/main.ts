@@ -1,5 +1,5 @@
 import { Simulation, STEPS_PER_SECOND, PLAYER } from './core/simulation.ts';
-import type { Snapshot } from './core/world.ts';
+import type { Entity, Snapshot } from './core/world.ts';
 import { Engine } from './core/engine.ts';
 import { Recorder, replay, compare } from './core/replay.ts';
 import type { Recording } from './core/replay.ts';
@@ -194,6 +194,9 @@ window.addEventListener('keydown', (event) => {
   }
 });
 
+/** Horodatage de l'image précédente, pour mesurer le vrai temps écoulé. */
+let lastFrame = 0;
+
 const engine = new Engine(
   {
     fixedUpdate() {
@@ -225,8 +228,16 @@ const engine = new Engine(
     render(alpha) {
       // La caméra suit avec le temps réel : elle appartient à l'affichage, pas
       // à la simulation, et ne peut donc pas fausser un rejeu.
+      const now = performance.now();
+      const elapsed = lastFrame === 0 ? 1 / 60 : Math.min((now - lastFrame) / 1000, 0.1);
+      lastFrame = now;
+
       const target = playerPosition();
-      follow(camera, target.x, target.y, 1 / 60);
+      follow(camera, target.x, target.y, elapsed);
+      // Les décalages fondent au rythme de l'affichage, pas de la simulation :
+      // ils n'appartiennent qu'à l'image.
+      client?.smoothing.decay(elapsed);
+
       render(ctx!, {
         stores: simulation.stores,
         chunks,
@@ -236,6 +247,7 @@ const engine = new Engine(
         palette,
         alpha,
         highlight: inspector.selected(),
+        ...(client ? { offsetOf: (entity: Entity) => client!.smoothing.offsetOf(entity) } : {}),
       });
     },
   },

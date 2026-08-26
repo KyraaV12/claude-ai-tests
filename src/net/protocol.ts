@@ -19,6 +19,15 @@ export type Message =
       snapshot: Snapshot;
       /** Dernier pas d'entrée pris en compte pour chaque joueur. */
       acked: Array<[PlayerId, number]>;
+      /**
+       * Dernière demande appliquée par joueur.
+       *
+       * Sans elle, un client ne peut extrapoler les autres personnages qu'à
+       * vitesse constante : ni accélération, ni freinage. Ils dérivent entre
+       * deux états, puis se font recaler d'un coup — c'est la saccade qu'on
+       * voit à l'écran. Quelques dizaines d'octets contre un mouvement juste.
+       */
+      inputs: Array<[PlayerId, InputFrame]>;
     };
 
 export interface Transport {
