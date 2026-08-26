@@ -145,6 +145,10 @@ export class Host {
       step: this.simulation.stepCount,
       snapshot: this.simulation.snapshot(),
       acked: [...this.acked.entries()].sort((a, b) => a[0] - b[0]),
+      // Ce que chacun demandait au dernier pas connu. Les clients s'en servent
+      // pour extrapoler les autres personnages avec les mêmes forces que
+      // l'hôte, au lieu de les faire glisser en ligne droite.
+      inputs: [...this.lastApplied.entries()].sort((a, b) => a[0] - b[0]).map(([p, i]) => [p, { ...i }]),
     });
   }
 

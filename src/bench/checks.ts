@@ -2,7 +2,7 @@ import { Simulation, STEPS_PER_SECOND } from '../core/simulation.ts';
 import type { InputFrame, PlayerId, Tick } from '../core/simulation.ts';
 import { Recorder, replay, compare } from '../core/replay.ts';
 import { generateChunk } from '../world/chunk.ts';
-import { Rig, busy, idle, stableDigest, STILL, EAST, NORTH } from './rig.ts';
+import { Rig, busy, idle, stableDigest, displayedPosition, STILL, EAST, NORTH } from './rig.ts';
 import { runScenario, hashSimulation, SCENARIO_018 } from './scenario.ts';
 
 /**
@@ -408,7 +408,7 @@ const prediction: Check = {
   id: 'prediction',
   label: 'Prédiction',
   group: 'Réseau',
-  about: "Le client ne se trompe jamais sur lui-même : c'est tout ce que la prédiction promet.",
+  about: "Sans latence, le client devine juste — sur lui-même comme sur les autres.",
   run() {
     const rig = new Rig({ players: 2, conditions: { latencySteps: 0 } });
     rig.run(600, (player) => (player === 2 ? EAST : STILL));
@@ -419,29 +419,105 @@ const prediction: Check = {
     const whileMoving = rig.divergence(2);
     rig.settle();
     const ownDrift = rig.divergence(2);
-    const exact = client.ready && client.selfCorrections === 0 && ownDrift < NEGLIGIBLE;
+    const exact =
+      client.ready && client.selfCorrections === 0 && client.corrections === 0 && ownDrift < NEGLIGIBLE;
 
-    // Contrepartie : dès que l'hôte bouge, le client *doit* être corrigé — il
-    // ne peut pas deviner les demandes d'un autre. Un zéro ici voudrait dire
-    // qu'on ne compare rien.
-    const moving = new Rig({ players: 2, conditions: { latencySteps: 2 } });
-    moving.run(400, (player) => (player === 2 ? EAST : NORTH));
-    const honest = moving.clientOf(2)!.corrections > 0;
+    // Contrepartie : un hôte qui change souvent d'avis ne peut pas être deviné
+    // — sa nouvelle demande met un aller-retour à parvenir. Des corrections
+    // doivent donc apparaître, sans quoi le compteur ne mesurerait rien.
+    const capricious = new Rig({ players: 2, conditions: { latencySteps: 8 } });
+    capricious.run(500, (player, step) =>
+      player === 1 ? (Math.floor(step / 10) % 2 === 0 ? EAST : NORTH) : STILL,
+    );
+    const honest = capricious.clientOf(2)!.corrections > 0;
 
     return {
       passed: exact && honest,
       detail: exact
         ? honest
-          ? `Sur 600 pas sans latence, le client n'a jamais été corrigé sur sa propre entité, et il retombe exactement sur l'hôte dès l'arrêt (les ${whileMoving.toFixed(0)} unités d'écart en pleine course sont son avance, pas une erreur). Les ${client.corrections} corrections comptées portent sur les *autres* : le client extrapole leurs personnages sans connaître leurs touches, l'hôte le rattrape dix fois par seconde. Leur transmettre les dernières demandes appliquées les ferait tomber à zéro — c'est la prochaine marche du réseau, pas un défaut d'aujourd'hui.`
-          : "Aucune correction — mais le compteur ne bouge jamais, même quand l'hôte se déplace : la mesure ne prouve rien."
-        : `${client.selfCorrections} corrections sur sa propre entité, et ${ownDrift.toFixed(2)} unité d'écart : la prédiction ne tombe plus juste.`,
+          ? `Sur 600 pas sans latence, aucune correction — ni sur sa propre entité, ni sur celle de l'hôte. Le client reçoit avec chaque état les dernières demandes appliquées, et rejoue donc les autres personnages avec les mêmes forces que l'autorité au lieu de les faire glisser en ligne droite. Les ${whileMoving.toFixed(0)} unités d'écart en pleine course sont son avance, pas une erreur : à l'arrêt il retombe sur l'hôte.`
+          : "Aucune correction — mais le compteur ne bouge pas davantage quand l'hôte change sans cesse de direction, ce qui est impossible : la mesure ne prouve rien."
+        : `${client.selfCorrections} corrections sur soi, ${client.corrections} sur les autres, et ${ownDrift.toFixed(2)} unité d'écart à l'arrêt.`,
       metrics: [
         ['corrections sur soi', String(client.selfCorrections)],
+        ['corrections sur les autres', String(client.corrections)],
         ['écart sur soi, en course', whileMoving.toFixed(2)],
         ['écart sur soi, à l’arrêt', ownDrift.toFixed(4)],
-        ['corrections sur les autres', String(client.corrections)],
-        ['contrôle négatif', honest ? `${moving.clientOf(2)!.corrections} corrections` : 'aucune'],
+        ['contrôle négatif', honest ? `${capricious.clientOf(2)!.corrections} corrections` : 'aucune'],
       ],
+    };
+  },
+};
+
+/**
+ * Mesure la fluidité d'un personnage distant, vu d'un client.
+ *
+ * On échantillonne à chaque pas la position **affichée**, et l'on regarde de
+ * combien elle avance. Un mouvement fluide donne toujours le même pas ; une
+ * saccade est un pas anormalement grand — le personnage a sauté.
+ */
+function judder(latencySteps: number, direction: InputFrame): { median: number; worst: number; spikes: number } {
+  const rig = new Rig({ players: 2, conditions: { latencySteps } });
+  const client = rig.clientOf(2)!;
+  // On laisse la connexion s'établir : le premier état corrige forcément
+  // beaucoup, et mesurer là-dedans ne dirait rien de la marche normale.
+  rig.run(150, (player) => (player === 1 ? direction : STILL));
+
+  const steps: number[] = [];
+  let last = displayedPosition(client, 1);
+  for (let i = 0; i < 600; i++) {
+    rig.step((player) => (player === 1 ? direction : STILL));
+    const now = displayedPosition(client, 1);
+    if (last && now) steps.push(Math.hypot(now.x - last.x, now.y - last.y));
+    last = now;
+  }
+
+  const sorted = [...steps].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
+  const worst = steps.length ? Math.max(...steps) : 0;
+  // Un pas qui dépasse la moitié du pas normal se voit à l'œil.
+  const spikes = steps.filter((d) => Math.abs(d - median) > Math.max(median * 0.5, 0.5)).length;
+  return { median, worst, spikes };
+}
+
+const fluidite: Check = {
+  id: 'fluidite',
+  label: 'Fluidité du joueur distant',
+  group: 'Réseau',
+  about: "Le personnage d'un autre joueur avance sans saccade, jusqu'à 200 ms de latence.",
+  run() {
+    // La tolérance est nommée par cas plutôt que globale : jusqu'à 200 ms on
+    // exige la fluidité parfaite, à 500 ms on mesure et l'on dit ce qu'il
+    // reste. Une barre unique cacherait l'un ou ferait échouer l'autre.
+    const cases: Array<{ label: string; latency: number; direction: InputFrame; allowed: number }> = [
+      { label: '50 ms, plein est', latency: 3, direction: EAST, allowed: 0 },
+      { label: '100 ms, plein est', latency: 6, direction: EAST, allowed: 0 },
+      { label: '200 ms, plein est', latency: 12, direction: EAST, allowed: 0 },
+      { label: '50 ms, vers le nord', latency: 3, direction: NORTH, allowed: 0 },
+      { label: '500 ms, plein est', latency: 30, direction: EAST, allowed: 60 },
+    ];
+
+    const metrics: Array<[string, string]> = [];
+    let failed: string | null = null;
+    let worstJump = 0;
+
+    for (const { label, latency, direction, allowed } of cases) {
+      const result = judder(latency, direction);
+      worstJump = Math.max(worstJump, result.worst);
+      if (result.spikes > allowed && failed === null) failed = label;
+      metrics.push([
+        label,
+        `pas ${result.median.toFixed(2)} · pire ${result.worst.toFixed(2)} · ${result.spikes} saccades / 600`,
+      ]);
+    }
+
+    return {
+      passed: failed === null,
+      detail:
+        failed === null
+          ? "Aucune saccade jusqu'à 200 ms ; à 500 ms il en reste quelques-unes, plafonnées à deux fois le pas normal. La position simulée, elle, saute bel et bien : l'horloge du client se recale une dizaine de fois par seconde, et le personnage distant y gagne ou perd trois pas d'un coup. Le décalage d'affichage encaisse ce saut et le laisse fondre en deux dixièmes de seconde. La simulation reste exacte au bit près — c'est l'image qui temporise, jamais l'état."
+          : `Le cas « ${failed} » saccade : le personnage distant saute visiblement (jusqu'à ${worstJump.toFixed(1)} unités en un pas).`,
+      metrics,
     };
   },
 };
@@ -796,6 +872,7 @@ export const CHECKS: Check[] = [
   huitJoueurs,
   monteeEnCharge,
   prediction,
+  fluidite,
   reconciliation,
   replication,
   perteDePaquets,

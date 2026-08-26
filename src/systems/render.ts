@@ -24,6 +24,13 @@ export interface Scene {
   /** Avancement du rendu entre le dernier pas de simulation et le suivant. */
   alpha: number;
   highlight: Entity | null;
+  /**
+   * Décalage d'affichage d'une entité, s'il y en a un.
+   *
+   * Sert à absorber les corrections du réseau sans toucher à la simulation :
+   * l'état reste exact, seule l'image temporise. Absent hors réseau.
+   */
+  offsetOf?: (entity: Entity) => { x: number; y: number } | undefined;
 }
 
 function lerp(from: number, to: number, alpha: number): number {
@@ -61,11 +68,12 @@ export function render(ctx: CanvasRenderingContext2D, scene: Scene): void {
     const body = stores.body.get(entity);
     if (!sprite || !body) continue;
 
+    const offset = scene.offsetOf?.(entity);
     const point = worldToScreen(
       camera,
       viewport,
-      lerp(transform.previousX, transform.x, alpha),
-      lerp(transform.previousY, transform.y, alpha),
+      lerp(transform.previousX, transform.x, alpha) + (offset?.x ?? 0),
+      lerp(transform.previousY, transform.y, alpha) + (offset?.y ?? 0),
     );
     const radius = body.radius / camera.scale;
 

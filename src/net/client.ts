@@ -1,6 +1,8 @@
 import { Simulation } from '../core/simulation.ts';
 import type { InputFrame, PlayerId, Tick } from '../core/simulation.ts';
 import { compare } from '../core/replay.ts';
+import type { Entity } from '../core/world.ts';
+import { Smoothing } from './smoothing.ts';
 import type { Message, Transport } from './protocol.ts';
 
 /**
@@ -69,6 +71,16 @@ export class Client {
   selfCorrections = 0;
   /** Recalages d'horloge : l'avance a changé, il n'y a rien à comparer. */
   resyncs = 0;
+  /**
+   * Dernière demande connue de chaque joueur, telle que l'hôte l'a appliquée.
+   *
+   * Sert à extrapoler les autres personnages entre deux états, avec les mêmes
+   * forces que chez l'hôte. Sans elle ils glissent en ligne droite, sans
+   * accélération ni freinage, et se font recaler d'un coup.
+   */
+  private readonly remoteInputs = new Map<PlayerId, InputFrame>();
+  /** Décalages d'affichage qui absorbent les corrections. Hors simulation. */
+  readonly smoothing = new Smoothing();
 
   constructor(seed: number, transport: Transport, player: PlayerId, options: ClientOptions = {}) {
     this.seed = seed;
@@ -121,7 +133,24 @@ export class Client {
     const copy = { ...input };
     this.unacked.push({ step, input: copy });
     this.transport.send({ kind: 'input', player: this.player, step, input: copy });
-    this.simulation.step([{ player: this.player, ...copy }]);
+    this.simulation.step(this.tickWith(copy));
+  }
+
+  /**
+   * La demande du pas : la sienne, plus la dernière connue de chacun des autres.
+   *
+   * Seul le déplacement est extrapolé. Rejouer une pose ou une récolte ferait
+   * apparaître chez le client une construction fantôme, effacée à l'état
+   * suivant : un clignotement pour rien. Les actions attendent l'autorité,
+   * le mouvement n'attend pas.
+   */
+  private tickWith(own: InputFrame): Tick {
+    const tick: Tick = [{ player: this.player, ...own }];
+    for (const [player, remote] of this.remoteInputs) {
+      if (player === this.player) continue;
+      tick.push({ player, x: remote.x, y: remote.y, build: false, harvest: false });
+    }
+    return tick;
   }
 
   private receive(message: Message): void {
@@ -133,9 +162,14 @@ export class Client {
     const predicted = this.started ? this.simulation.snapshot() : null;
     const predictedSelf = this.started ? this.describeSelf() : null;
     const predictedStep = this.simulation.stepCount;
+    // Où l'on croyait que se trouvaient les autres, juste avant la correction.
+    const before = this.started ? this.positionsOfOthers() : null;
 
     this.simulation.restore(message.snapshot, message.step);
     this.started = true;
+
+    this.remoteInputs.clear();
+    for (const [player, input] of message.inputs) this.remoteInputs.set(player, input);
 
     const ackedForMe = message.acked.find(([player]) => player === this.player)?.[1] ?? 0;
     this.unacked = this.unacked.filter((entry) => entry.step > ackedForMe);
@@ -146,7 +180,7 @@ export class Client {
     this.unacked = [];
     for (const entry of pending) {
       this.unacked.push(entry);
-      this.simulation.step([{ player: this.player, ...entry.input }] as Tick);
+      this.simulation.step(this.tickWith(entry.input));
     }
 
     // Reprise de l'avance : les pas manquants sont simulés avec la demande
@@ -154,6 +188,17 @@ export class Client {
     // il rejouerait autre chose que ce que le client a prédit.
     while (this.simulation.stepCount < message.step + this.lead) {
       this.predictOne(this.localInput);
+    }
+
+    // Ce dont les autres personnages viennent de sauter sans avoir bougé :
+    // encaissé dans un décalage d'affichage qui fondra en une fraction de
+    // seconde. La simulation, elle, garde la position exacte.
+    if (before) {
+      const after = this.positionsOfOthers();
+      for (const [entity, was] of before) {
+        const now = after.get(entity);
+        if (now) this.smoothing.record(entity, now.x - was.x, now.y - was.y);
+      }
     }
 
     if (!predicted) return;
@@ -175,6 +220,17 @@ export class Client {
       firstDifference: result.firstDifference,
     };
     if (!result.identical) this.corrections++;
+  }
+
+  /** Les positions de tout ce que le client ne pilote pas. */
+  private positionsOfOthers(): Map<Entity, { x: number; y: number }> {
+    const own = this.simulation.entityOf(this.player);
+    const positions = new Map<Entity, { x: number; y: number }>();
+    for (const [entity, transform] of this.simulation.stores.transform.entries()) {
+      if (entity === own) continue;
+      positions.set(entity, { x: transform.x, y: transform.y });
+    }
+    return positions;
   }
 
   /** L'état de sa propre entité, réduit à ce qui bouge. */

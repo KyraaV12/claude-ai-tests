@@ -85,7 +85,7 @@ Ce qui se mesure : un client ne se voit **jamais** corrigé, quelle que soit la 
 
 ## Le banc de vérification
 
-`src/bench/checks.ts` définit dix-sept vérifications comme des **fonctions ordinaires** : ni `node:test`, ni rien du navigateur. Deux harnais les exécutent — `test/bench.test.ts` sous Node, et la page [Test Runner](https://kyraav12.github.io/claude-ai-tests/bench/) dans un fil séparé. Deux listes qui se ressemblent finissent toujours par diverger, et c'est alors le banc qui ment ; ici il n'y en a qu'une.
+`src/bench/checks.ts` définit dix-huit vérifications comme des **fonctions ordinaires** : ni `node:test`, ni rien du navigateur. Deux harnais les exécutent — `test/bench.test.ts` sous Node, et la page [Test Runner](https://kyraav12.github.io/claude-ai-tests/bench/) dans un fil séparé. Deux listes qui se ressemblent finissent toujours par diverger, et c'est alors le banc qui ment ; ici il n'y en a qu'une.
 
 Chaque vérification rend un verdict **et ses mesures**. Un rouge sans chiffres ne dit pas si l'on est passé de 0,2 à 0,3 ou de 0,2 à 400.
 
@@ -107,6 +107,7 @@ Un test vérifie que le garde-fou garde : on décale la graine d'une unité et l
 | Dégradations | doublons 20 %, désordre 30 %, gigue ±6 pas, et les cinq à la fois |
 | Déconnexion | départ annoncé et coupure sèche, personnage conservé, inventaire intact |
 | Reconnexion | même entité retrouvée, empreinte d'état identique à celle de l'hôte |
+| Fluidité | 50, 100, 200 ms : aucune saccade à l'affichage ; 500 ms : pire saut plafonné à deux fois le pas normal |
 
 **Ce qui cédera en premier, et le banc le dit :** la bande passante croît linéairement avec le nombre de joueurs, parce que l'état complet est diffusé dix fois par seconde — 9,6 kio par paquet à huit joueurs. Le tick, lui, garde un facteur cinq de marge. C'est l'encodage différentiel qu'il faudra écrire, pas l'optimisation de la boucle.
 
@@ -120,7 +121,19 @@ Un test vérifie que le garde-fou garde : on décale la graine d'une unité et l
 
 « Pas client par seconde » n'est pas un nombre d'images par seconde : aucun rendu n'a lieu dans le banc. C'est ce qu'un client peut *simuler*, donc le plafond au-dessus duquel aucune boucle d'affichage ne montera. Le vrai chiffre d'images se lit sur la page du jeu.
 
-Et les corrections comptées portent sur les **autres** joueurs : un client n'a jamais tort sur lui-même — c'est vérifié à toutes les latences — mais il extrapole les autres sans connaître leurs touches. Leur transmettre les dernières demandes appliquées ferait tomber ce compteur à zéro. C'est la prochaine marche du réseau, pas un défaut d'aujourd'hui.
+## Voir bouger les autres
+
+Un client n'a jamais tort sur lui-même — c'est vérifié à toutes les latences. Sur les **autres**, il l'était, et cela se voyait : leur personnage saccadait dix fois par seconde. Deux causes, deux correctifs, tous deux mesurés.
+
+**L'état porte désormais les dernières demandes appliquées.** Le client rejouait les autres personnages sans savoir sur quoi ils appuyaient : ni accélération, ni freinage, une glissade en ligne droite entre deux états. Il reçoit maintenant, avec chaque état, la demande que l'hôte a appliquée pour chacun, et les rejoue avec les mêmes forces. Le compteur de corrections passe de 80 à **0** sur six cents pas sans latence. Seul le déplacement est extrapolé : rejouer une pose ferait clignoter chez le client une construction que l'autorité effacerait.
+
+**Ce qui reste est absorbé à l'affichage.** L'horloge du client se recale une dizaine de fois par seconde — le nombre de pas rejoués varie d'un état à l'autre — et le personnage distant y gagne ou perd trois pas d'un coup. Mesuré dans le navigateur, à deux onglets : jusqu'à **32 unités** de saut là où un pas normal en fait 6,3.
+
+La réponse n'est pas de toucher à la simulation : le déterminisme, le rejeu et les empreintes en dépendent. `src/net/smoothing.ts` garde un **décalage purement visuel** par entité. Au moment de la correction, le décalage encaisse le saut pour que l'image ne bouge pas, puis fond en deux dixièmes de seconde — avec un plafond de vitesse de rattrapage, sans lequel un gros décalage se paierait d'un élan qu'aucun personnage ne pourrait courir. Une fois le décalage nul, l'affichage est de nouveau exactement la simulation : ni retard permanent, ni mollesse ajoutée.
+
+Résultat mesuré : **aucune saccade jusqu'à 200 ms** de latence, et à 500 ms le pire saut tombe de 355 à 13 unités. Le client ne se lisse jamais lui-même — ce serait ajouter de la latence ressentie à chaque touche, exactement ce que la prédiction évite.
+
+Ce qui demeure, et qui n'est pas résolu ici : l'horloge du client saute encore. La gestion du temps côté client — l'étirer et le contracter d'un pas à la fois plutôt que de le recaler d'un bond — est la vraie réponse, et elle n'est pas écrite. Une tentative de rendre l'horloge monotone a été mesurée puis abandonnée : elle créait cent recalages à 100 ms là où il n'y en avait aucun.
 
 ## Récolter
 

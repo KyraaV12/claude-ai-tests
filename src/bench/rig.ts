@@ -4,7 +4,7 @@ import { MemoryNetwork } from '../net/memory-transport.ts';
 import type { NetworkConditions } from '../net/memory-transport.ts';
 import { Host } from '../net/host.ts';
 import { Client } from '../net/client.ts';
-import { STEPS_PER_SECOND } from '../core/simulation.ts';
+import { STEPS_PER_SECOND, STEP_SECONDS } from '../core/simulation.ts';
 import { sha256 } from './hash.ts';
 
 /**
@@ -146,6 +146,9 @@ export class Rig {
 
     const beforeClients = performance.now();
     for (const client of this.clients) client.advance();
+    // Une image par pas : le lissage d'affichage fond au même rythme que dans
+    // le navigateur à soixante images par seconde.
+    for (const client of this.clients) client.smoothing.decay(STEP_SECONDS);
     const betweenHalves = performance.now();
     this.host.advance();
     const afterHost = performance.now();
@@ -228,6 +231,22 @@ export class Rig {
       divergence: this.divergence(),
     };
   }
+}
+
+/**
+ * Où un client *dessine* un personnage : la simulation, plus son décalage.
+ *
+ * C'est cette position-là que voit le joueur, et donc la seule où mesurer la
+ * fluidité. La position simulée, elle, encaisse les recalages d'horloge du
+ * réseau — elle est exacte, pas continue.
+ */
+export function displayedPosition(client: Client, player: PlayerId): { x: number; y: number } | null {
+  const entity = client.simulation.entityOf(player);
+  if (entity === null) return null;
+  const transform = client.simulation.stores.transform.get(entity);
+  if (!transform) return null;
+  const offset = client.smoothing.offsetOf(entity);
+  return { x: transform.x + (offset?.x ?? 0), y: transform.y + (offset?.y ?? 0) };
 }
 
 /**
