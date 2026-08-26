@@ -3,7 +3,11 @@ name: Vérifier et déployer
 on:
   push:
     branches: [main]
+  # Sans « types », GitHub n'écoute que opened, synchronize et reopened : sortir
+  # une pull request du brouillon ne déclenchait donc aucune vérification, et
+  # elle pouvait être fusionnée sur la foi d'une CI qui datait ou n'existait pas.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 jobs:
