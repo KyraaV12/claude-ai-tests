@@ -1,4 +1,4 @@
-import { Simulation, STEPS_PER_SECOND } from './core/simulation.ts';
+import { Simulation, STEPS_PER_SECOND, PLAYER } from './core/simulation.ts';
 import type { Snapshot } from './core/world.ts';
 import { Engine } from './core/engine.ts';
 import { Recorder, replay, compare } from './core/replay.ts';
@@ -69,8 +69,16 @@ function setVerdict(text: string, tone: 'neutre' | 'ok' | 'alerte'): void {
 }
 
 function playerPosition(): { x: number; y: number } {
-  const transform = simulation.stores.transform.get(1);
+  const transform = simulation.stores.transform.get(PLAYER);
   return transform ? { x: transform.x, y: transform.y } : simulation.spawn;
+}
+
+/** Ce que la dernière tentative de pose a donné, dit au joueur. */
+function buildStatus(): string {
+  const blocs = simulation.stores.inventory.get(PLAYER)?.blocs ?? 0;
+  const last = simulation.lastBuild;
+  if (last && !last.placed && last.reason !== 'attente') return `${blocs} blocs — ${last.reason}`;
+  return `${blocs} blocs`;
 }
 
 /** Démarre un enregistrement sur un monde neuf, moteur en marche. */
@@ -133,7 +141,10 @@ window.addEventListener('keydown', (event) => {
 const engine = new Engine(
   {
     fixedUpdate() {
-      const input = keyboard.axis();
+      const axis = keyboard.axis();
+      // L'action de pose fait partie de l'entrée : un geste hors de la trame
+      // ne serait pas enregistré, et le rejeu divergerait sans explication.
+      const input = { x: axis.x, y: axis.y, build: keyboard.isPressed('KeyE') };
       recorder?.capture(input);
       simulation.step(input);
     },
@@ -179,6 +190,7 @@ function refreshOverlay(): void {
     `${position.x.toFixed(0)}, ${position.y.toFixed(0)}`,
     `morceau ${chunkCoordOf(position.x)}, ${chunkCoordOf(position.y)}`,
     biomeAt(SEED, position.x, position.y),
+    buildStatus(),
     `${chunks.size} en mémoire · ${chunks.generationCount} calculés`,
     recorder ? `● ${recorder.frameCount} pas` : `${simulation.world.entityCount} entités`,
   ].join('   ·   ');

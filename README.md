@@ -60,6 +60,18 @@ Le point de départ est cherché en spirale depuis l'origine jusqu'à la terre f
 
 La caméra appartient à l'affichage, jamais à la simulation : elle est lissée avec le temps réel, donc non déterministe, et c'est sans conséquence puisque aucun système ne la lit. La faire entrer dans `Simulation.step()` casserait le rejeu.
 
+## Construire
+
+<kbd>E</kbd> pose une construction devant le joueur. Quarante blocs au départ, un par pose, trois refus nommés : *sans ressource*, *sur l'eau*, *place occupée*.
+
+Une construction est une **entité**, donc de l'état : sauvegardée, comparée, un jour répliquée. C'est l'inverse du terrain. La frontière posée en T3 tient, et cette tranche l'éprouve sur deux points :
+
+**La simulation lit le monde dérivé, elle ne l'écrit jamais.** Refuser de bâtir sur l'eau interroge `biomeAt`, une fonction pure de la graine : le refus est reproductible et le rejeu reste exact.
+
+**Toute action passe par la trame d'entrée.** `InputFrame` porte désormais `build`. Un geste qui n'y figurerait pas ne serait pas enregistré, et le rejeu divergerait sans explication. La direction de pose vient de `Controlled.facingX/Y`, retenue quand la saisie cesse — c'est de l'état, donc sérialisé.
+
+Coût assumé : chaque trame porte un booléen, ce qui fait passer une session de cent pas de 1,8 à 4 ko. Un encodage par plages le réglera quand ça comptera.
+
 ## Inspecter
 
 La boucle sait s'arrêter (`Engine.pause()`) et avancer d'un nombre exact de pas (`stepOnce(n)`). À l'arrêt le rendu continue mais **n'interpole plus** : ce qui est affiché est exactement l'état qu'on inspecte.

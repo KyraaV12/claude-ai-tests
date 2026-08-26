@@ -17,6 +17,9 @@ export function applyControl(stores: Stores, axis: Axis, dt: number): void {
     if (axis.x !== 0 || axis.y !== 0) {
       velocity.x += axis.x * control.acceleration * dt;
       velocity.y += axis.y * control.acceleration * dt;
+      // La direction est retenue : à l'arrêt, on doit encore savoir où poser.
+      control.facingX = axis.x;
+      control.facingY = axis.y;
     } else {
       const decay = Math.max(0, 1 - control.damping * dt);
       velocity.x *= decay;
