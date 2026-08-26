@@ -70,13 +70,16 @@ export function render(
 
   for (const [entity, transform] of stores.transform.entries()) {
     const sprite = stores.sprite.get(entity);
-    if (!sprite) continue;
+    const body = stores.body.get(entity);
+    // Le rayon vient du corps, la teinte de l'apparence : un corps sans Sprite
+    // existe pour la physique sans rien dessiner.
+    if (!sprite || !body) continue;
 
     const x = wrap(lerp(transform.previousX, transform.x, alpha), bounds.width);
     const y = wrap(lerp(transform.previousY, transform.y, alpha), bounds.height);
 
     ctx.beginPath();
-    ctx.arc(x, y, sprite.radius, 0, Math.PI * 2);
+    ctx.arc(x, y, body.radius, 0, Math.PI * 2);
     ctx.fillStyle = `hsl(${sprite.hue} 70% 55%)`;
     ctx.fill();
 
