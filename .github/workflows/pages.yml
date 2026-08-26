@@ -32,7 +32,9 @@ jobs:
     # Rien n'est publié tant que les types et les tests ne passent pas : le site
     # en ligne ne peut pas être en avance sur ce qui a été vérifié.
     needs: check
-    if: github.event_name != 'pull_request'
+    # La branche, pas seulement l'événement : sans ça, un workflow_dispatch
+    # lancé depuis une branche publierait cette branche en production.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
