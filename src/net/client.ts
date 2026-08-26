@@ -35,6 +35,14 @@ export interface ClientOptions {
   lead?: number;
 }
 
+/**
+ * Pas entre deux réannonces tant que l'hôte n'a pas confirmé notre présence.
+ *
+ * Un demi-seconde : assez rare pour ne pas encombrer le canal, assez fréquent
+ * pour qu'une entrée en jeu ne se fasse pas attendre.
+ */
+const JOIN_RETRY_STEPS = 30;
+
 export class Client {
   readonly transport: Transport;
   readonly player: PlayerId;
@@ -44,6 +52,8 @@ export class Client {
   private unacked: Array<{ step: number; input: InputFrame }> = [];
   private localInput: InputFrame = { x: 0, y: 0, build: false, harvest: false };
   private started = false;
+  /** Pas restants avant de redemander son entrée. */
+  private joinTimer = JOIN_RETRY_STEPS;
   private readonly lead: number;
   lastCorrection: Correction | null = null;
   /** Écarts sur l'état complet — les autres joueurs en font partie. */
@@ -82,8 +92,27 @@ export class Client {
 
   /** Prédit un pas et envoie la demande correspondante. */
   advance(): void {
+    this.announce();
     if (!this.started) return;
     this.predictOne(this.localInput);
+  }
+
+  /**
+   * Redemande son entrée tant qu'on ne se voit pas dans l'état d'autorité.
+   *
+   * Un seul `join`, envoyé au départ, suffisait tant que le canal ne perdait
+   * rien. Dès 5 % de pertes, il s'évapore parfois — et le joueur reste dehors
+   * pour toujours, sans que rien ne le rejoue. La demande est idempotente chez
+   * l'hôte : la répéter ne coûte que le paquet.
+   */
+  private announce(): void {
+    if (this.started && this.simulation.entityOf(this.player) !== null) return;
+    if (this.joinTimer > 0) {
+      this.joinTimer--;
+      return;
+    }
+    this.joinTimer = JOIN_RETRY_STEPS;
+    this.transport.send({ kind: 'join', player: this.player });
   }
 
   /** Simule un pas localement, en ayant d'abord annoncé la demande. */

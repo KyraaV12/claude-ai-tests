@@ -197,7 +197,9 @@ test('l ordre des demandes dans un pas ne change pas le résultat', () => {
   assert.equal(JSON.stringify(ascending.snapshot()), JSON.stringify(descending.snapshot()));
 });
 
-test('un joueur qui part disparaît des deux côtés', () => {
+test('un joueur qui part cesse de piloter, mais son personnage reste', () => {
+  // Détruire l'entité ferait s'évaporer son inventaire et rendrait toute
+  // reconnexion inutile. Le personnage demeure, simplement il n'obéit plus.
   const r = rig(0);
   run(r, 20);
   assert.deepEqual(r.host.simulation.players(), [1, 2]);
@@ -206,7 +208,9 @@ test('un joueur qui part disparaît des deux côtés', () => {
   r.net.advance();
   r.host.advance();
 
-  assert.deepEqual(r.host.simulation.players(), [1]);
+  assert.deepEqual(r.host.simulation.players(), [1, 2], 'le personnage doit rester');
+  assert.deepEqual(r.host.absentPlayers(), [2]);
+  assert.deepEqual(r.host.connectedPlayers(), [1]);
 });
 
 test('le réseau ne transporte jamais le terrain', () => {

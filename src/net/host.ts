@@ -14,6 +14,13 @@ import type { Message, Transport } from './protocol.ts';
 export interface HostOptions {
   /** Un état est diffusé tous les N pas. Six pas ≈ dix fois par seconde. */
   stateEvery?: number;
+  /**
+   * Pas sans nouvelle d'un joueur avant de le déclarer absent.
+   *
+   * 180 pas ≈ trois secondes. En deçà, une rafale de paquets perdus
+   * suffirait à éjecter quelqu'un qui joue.
+   */
+  timeoutSteps?: number;
 }
 
 export class Host {
@@ -34,26 +41,55 @@ export class Host {
   private readonly acked = new Map<PlayerId, number>();
   /** Les demandes appliquées au dernier pas — de quoi les enregistrer. */
   lastTick: Tick = [];
+  /** Dernier pas où l'on a eu des nouvelles de chaque joueur. */
+  private readonly lastSeen = new Map<PlayerId, number>();
+  private readonly absent = new Set<PlayerId>();
+  private readonly timeoutSteps: number;
 
   constructor(seed: number, transport: Transport, localPlayer: PlayerId = 1, options: HostOptions = {}) {
     this.simulation = new Simulation(seed, [localPlayer]);
     this.transport = transport;
     this.localPlayer = localPlayer;
     this.stateEvery = options.stateEvery ?? 6;
+    this.timeoutSteps = options.timeoutSteps ?? 180;
     this.acked.set(localPlayer, 0);
+    this.lastSeen.set(localPlayer, 0);
     transport.onMessage((message) => this.receive(message));
   }
 
   setLocalInput(input: InputFrame): void {
     this.remember(this.localPlayer, this.simulation.stepCount + 1, input);
+    this.lastSeen.set(this.localPlayer, this.simulation.stepCount);
+    this.absent.delete(this.localPlayer);
+  }
+
+  /** Les joueurs dont on n'a plus de nouvelles. Leur personnage reste en place. */
+  absentPlayers(): PlayerId[] {
+    return [...this.absent].sort((a, b) => a - b);
+  }
+
+  connectedPlayers(): PlayerId[] {
+    return this.simulation.players().filter((p) => !this.absent.has(p));
   }
 
   /** Un pas d'autorité. */
   advance(): void {
     const step = this.simulation.stepCount + 1;
+    this.detectTimeouts(step);
     const tick: Tick = [];
 
     for (const player of this.simulation.players()) {
+      // Un joueur absent ne pilote plus rien, mais son personnage doit
+      // s'arrêter. Sans aucune demande, aucun freinage ne lui est appliqué et
+      // il file tout droit à l'infini : une demande vide, c'est exactement
+      // « lâcher les touches ». Il reste au monde, et son inventaire, ses
+      // constructions et ce qu'il a récolté demeurent — ce sont des entités
+      // comme les autres.
+      if (this.absent.has(player)) {
+        tick.push({ player, x: 0, y: 0, build: false, harvest: false });
+        continue;
+      }
+
       const byStep = this.buffered.get(player);
       const exact = byStep?.get(step);
 
@@ -75,6 +111,23 @@ export class Host {
     this.lastTick = tick;
     this.simulation.step(tick);
     if (this.simulation.stepCount % this.stateEvery === 0) this.broadcastState();
+  }
+
+  /**
+   * Déclare absents ceux dont on n'a plus de nouvelles.
+   *
+   * On efface leur dernière demande connue plutôt que de la répéter : sans ça,
+   * un joueur déconnecté en pleine course continuerait tout droit à jamais.
+   */
+  private detectTimeouts(step: number): void {
+    for (const player of this.simulation.players()) {
+      if (this.absent.has(player)) continue;
+      const seen = this.lastSeen.get(player);
+      if (seen === undefined || step - seen <= this.timeoutSteps) continue;
+      this.absent.add(player);
+      this.lastApplied.delete(player);
+      this.buffered.delete(player);
+    }
   }
 
   private remember(player: PlayerId, step: number, input: InputFrame): void {
@@ -105,21 +158,30 @@ export class Host {
         break;
 
       case 'join':
+        // Retrouvailles ou première venue, même chemin : addPlayer rend
+        // l'entité existante si elle est là. Un revenant récupère donc son
+        // personnage, son inventaire et tout ce qu'il avait bâti.
         this.simulation.addPlayer(message.player);
         if (!this.acked.has(message.player)) this.acked.set(message.player, 0);
+        this.absent.delete(message.player);
+        this.lastSeen.set(message.player, this.simulation.stepCount);
         this.broadcastState();
         break;
 
       case 'leave':
-        this.simulation.removePlayer(message.player);
-        this.buffered.delete(message.player);
+        // Partir n'est pas disparaître : le personnage reste au monde. Le
+        // détruire ferait s'évaporer un inventaire et rendrait toute
+        // reconnexion inutile.
+        this.absent.add(message.player);
         this.lastApplied.delete(message.player);
-        this.acked.delete(message.player);
+        this.buffered.delete(message.player);
         break;
 
       case 'input':
         // Un paquet dont le pas est déjà passé n'a plus de place dans
         // l'histoire : le retenir ferait reculer le joueur. On le laisse.
+        this.lastSeen.set(message.player, this.simulation.stepCount);
+        this.absent.delete(message.player);
         if (message.step <= this.simulation.stepCount) return;
         this.remember(message.player, message.step, message.input);
         break;
