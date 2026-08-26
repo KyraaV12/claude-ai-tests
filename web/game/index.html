@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>T0 — boucle et Transform</title>
+<title>Collisions et rejeu</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400..600&display=swap">
@@ -12,16 +12,19 @@
     color-scheme: light dark;
     --paper:#EBEEF3; --surface:#F9FAFC; --ink:#0F141C; --muted:#596373;
     --line:#D2D9E3; --line-strong:#B7C1CE; --accent:#22409E; --accent-soft:#E2E8F8; --grid:#C6D0DE;
+    --live:#0F7A57; --alert:#A3341B;
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
       --paper:#0B0F16; --surface:#131A25; --ink:#E6EBF3; --muted:#909CAF;
       --line:#212A38; --line-strong:#2F3A4A; --accent:#94ACFF; --accent-soft:#1A2440; --grid:#243040;
+      --live:#4CC79A; --alert:#F08A6C;
     }
   }
   :root[data-theme="dark"]{
     --paper:#0B0F16; --surface:#131A25; --ink:#E6EBF3; --muted:#909CAF;
     --line:#212A38; --line-strong:#2F3A4A; --accent:#94ACFF; --accent-soft:#1A2440; --grid:#243040;
+    --live:#4CC79A; --alert:#F08A6C;
   }
 
   *{ box-sizing:border-box; }
@@ -69,12 +72,23 @@
     padding:.1rem .35rem; color:var(--ink); background:var(--surface);
   }
   .note{ color:var(--muted); font-size:.92rem; max-width:70ch; margin:0; }
+
+  /* Le verdict de comparaison. Trois états, distingués par la couleur mais
+     aussi par le texte : la couleur seule ne suffit pas à porter une décision. */
+  #verdict{
+    font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:.78rem;
+    border:1px solid var(--line); border-left-width:3px; border-radius:3px;
+    padding:.55rem .75rem; color:var(--muted); background:var(--surface);
+  }
+  #verdict[data-tone="ok"]{ border-left-color:var(--live); color:var(--live); }
+  #verdict[data-tone="alerte"]{ border-left-color:var(--alert); color:var(--alert); }
+  #verdict[data-tone="neutre"]{ border-left-color:var(--line-strong); }
 </style>
 </head>
 <body>
   <header>
-    <p class="eyebrow">claude-ai-tests · tranche T0</p>
-    <h1>Boucle et Transform</h1>
+    <p class="eyebrow">claude-ai-tests · tranche T1</p>
+    <h1>Collisions et rejeu</h1>
     <p class="eyebrow"><a href="../">← banc d'essai</a></p>
   </header>
 
@@ -82,15 +96,19 @@
     <canvas id="scene" tabindex="0" aria-label="Aire de simulation"></canvas>
   </div>
   <div id="overlay" role="status" aria-live="off">initialisation…</div>
+  <p id="verdict" role="status" data-tone="neutre">initialisation…</p>
 
   <ul class="keys">
     <li><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd><span>déplacer</span></li>
     <li><kbd>ZQSD</kbd><span>ou</span><kbd>WASD</kbd></li>
+    <li><kbd>R</kbd><span>enregistrer, puis rejouer et comparer</span></li>
     <li><kbd>O</kbd><span>capturer l'état</span></li>
     <li><kbd>P</kbd><span>le restaurer</span></li>
   </ul>
 
-  <p class="note">La simulation avance à 60 pas fixes par seconde, indépendamment de la fréquence de l'écran ; le rendu interpole entre deux pas. Le monde fait 1000 × 600 unités quelle que soit la taille de la fenêtre, et les positions initiales viennent d'un générateur à graine — deux chargements produisent le même monde. Capturez avec <kbd>O</kbd>, déplacez-vous, restaurez avec <kbd>P</kbd> : l'état revient exactement où il était.</p>
+  <p class="note"><kbd>R</kbd> repart d'un monde neuf et enregistre vos entrées, pas par pas. <kbd>R</kbd> à nouveau rejoue cet enregistrement hors écran, depuis la seule graine et la suite des touches, puis compare l'état final au vôtre. S'ils coïncident, la simulation est bien déterministe : le rythme de votre écran et le moment exact de vos appuis n'ont eu aucune influence sur le résultat. C'est la propriété sur laquelle reposeront les sauvegardes comparables et, plus tard, la prédiction réseau.</p>
+
+  <p class="note">La simulation avance à 60 pas fixes par seconde ; le rendu interpole entre deux pas. Le monde fait 1000 × 600 unités quelle que soit la fenêtre et se replie sur lui-même aux bords — les collisions aussi. <kbd>O</kbd> capture l'état complet, <kbd>P</kbd> le restaure.</p>
 
   <script type="module" src="./app.js"></script>
 </body>

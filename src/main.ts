@@ -1,44 +1,29 @@
-import { World } from './core/world.ts';
+import { Simulation, WORLD_BOUNDS, STEPS_PER_SECOND } from './core/simulation.ts';
 import type { Snapshot } from './core/world.ts';
-import { createStores, transformAt } from './core/components.ts';
 import { Engine } from './core/engine.ts';
-import { createRandom } from './core/random.ts';
+import { Recorder, replay, compare } from './core/replay.ts';
+import type { Recording } from './core/replay.ts';
 import { Keyboard } from './systems/input.ts';
-import { applyControl, integrate } from './systems/movement.ts';
-import type { Bounds } from './systems/movement.ts';
 import { render } from './systems/render.ts';
 import type { Palette } from './systems/render.ts';
 
-const BOUNDS: Bounds = { width: 1000, height: 600 };
 const SEED = 20260826;
-const DRIFTER_COUNT = 24;
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement | null;
 const overlay = document.getElementById('overlay');
-if (!canvas || !overlay) throw new Error('Le gabarit de la page ne contient pas #scene et #overlay');
+const verdict = document.getElementById('verdict');
+if (!canvas || !overlay || !verdict) throw new Error('Le gabarit doit contenir #scene, #overlay et #verdict');
 
 const ctx = canvas.getContext('2d');
 if (!ctx) throw new Error('Canvas 2D indisponible dans ce navigateur');
 
-const world = new World();
-const stores = createStores(world);
+let simulation = new Simulation(SEED, WORLD_BOUNDS);
+let recorder: Recorder | null = null;
+let lastRecording: Recording | null = null;
+let saved: Snapshot | null = null;
+let savedNote = 'aucun';
+
 const keyboard = new Keyboard();
-const random = createRandom(SEED);
-
-function spawnWorld(): void {
-  const player = world.create();
-  stores.transform.set(player, transformAt(BOUNDS.width / 2, BOUNDS.height / 2));
-  stores.velocity.set(player, { x: 0, y: 0 });
-  stores.sprite.set(player, { radius: 14, hue: 212 });
-  stores.controlled.set(player, { acceleration: 900, maxSpeed: 320, damping: 2.4 });
-
-  for (let i = 0; i < DRIFTER_COUNT; i++) {
-    const entity = world.create();
-    stores.transform.set(entity, transformAt(random() * BOUNDS.width, random() * BOUNDS.height));
-    stores.velocity.set(entity, { x: (random() - 0.5) * 90, y: (random() - 0.5) * 90 });
-    stores.sprite.set(entity, { radius: 4 + random() * 7, hue: 150 + random() * 60 });
-  }
-}
 
 function readPalette(): Palette {
   const style = getComputedStyle(document.documentElement);
@@ -67,66 +52,118 @@ function resize(): void {
   ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-// Un instantané pris à la demande, pour éprouver la sérialisation dès T0.
-let saved: Snapshot | null = null;
-let savedNote = 'aucun';
+function setVerdict(text: string, tone: 'neutre' | 'ok' | 'alerte'): void {
+  verdict!.textContent = text;
+  verdict!.dataset['tone'] = tone;
+}
+
+/**
+ * Démarre un enregistrement sur un monde neuf.
+ *
+ * Repartir de zéro est ce qui rend la comparaison possible : le rejeu n'a que
+ * la graine et les entrées, il doit donc partir du même état initial que la
+ * session enregistrée.
+ */
+function startRecording(): void {
+  simulation = new Simulation(SEED, WORLD_BOUNDS);
+  recorder = new Recorder(SEED);
+  saved = null;
+  savedNote = 'aucun';
+  setVerdict('enregistrement en cours — rejouez avec R', 'neutre');
+}
+
+/** Arrête l'enregistrement, le rejoue à part, et compare les deux états finaux. */
+function stopAndVerify(): void {
+  if (!recorder) return;
+  const recording = recorder.finish();
+  recorder = null;
+  lastRecording = recording;
+
+  const live = simulation.snapshot();
+  const replayed = replay(recording, WORLD_BOUNDS);
+  const result = compare(live, replayed);
+
+  const size = JSON.stringify(recording).length;
+  if (result.identical) {
+    setVerdict(
+      `${recording.frames.length} pas rejoués depuis ${size} octets d'entrées — état final identique`,
+      'ok',
+    );
+  } else {
+    setVerdict(`divergence au premier écart : ${result.firstDifference}`, 'alerte');
+  }
+}
 
 window.addEventListener('keydown', (event) => {
-  if (event.code === 'KeyO') {
-    saved = world.snapshot();
+  if (event.repeat) return;
+  if (event.code === 'KeyR') {
+    if (recorder) stopAndVerify();
+    else startRecording();
+  } else if (event.code === 'KeyO') {
+    saved = simulation.snapshot();
     savedNote = `${JSON.stringify(saved).length} octets`;
   } else if (event.code === 'KeyP' && saved) {
-    world.restore(saved);
+    simulation.world.restore(saved);
   }
 });
 
 const engine = new Engine(
   {
-    fixedUpdate(dt) {
-      applyControl(stores, keyboard.axis(), dt);
-      integrate(stores, dt, BOUNDS);
+    fixedUpdate() {
+      const input = keyboard.axis();
+      // L'entrée est capturée avant d'être consommée : ce qui est enregistré
+      // est exactement ce que la simulation a reçu, pas une approximation.
+      recorder?.capture(input);
+      simulation.step(input);
     },
     render(alpha) {
-      render(ctx!, stores, alpha, BOUNDS, palette, cssSize);
+      render(ctx!, simulation.stores, alpha, WORLD_BOUNDS, palette, cssSize);
     },
   },
-  60,
+  STEPS_PER_SECOND,
 );
 
 function refreshOverlay(): void {
   const stats = engine.getStats();
   overlay!.textContent = [
     `${stats.fps.toFixed(0)} i/s`,
-    `${stats.stepsLastFrame} pas`,
-    `t = ${(stats.totalSteps / 60).toFixed(1)} s`,
-    `${world.entityCount} entités`,
+    `t = ${simulation.elapsedSeconds.toFixed(1)} s`,
+    `${simulation.world.entityCount} entités`,
+    recorder ? `● ${recorder.frameCount} pas enregistrés` : 'enregistrement : arrêté',
     `instantané : ${savedNote}`,
   ].join('   ·   ');
 }
 
 /**
- * Surface d'inspection : tout l'état du jeu, atteignable depuis la console du
- * navigateur (`t0.world.snapshot()`, `t0.stores.transform.get(1)`).
- *
- * C'est délibéré, et c'est la première pierre de l'inspecteur : un outil qui
- * lit l'état d'un jeu doit d'abord pouvoir y accéder. Les tests de bout en
- * bout s'appuient sur la même surface.
+ * Surface d'inspection : le monde, la simulation et le dernier enregistrement,
+ * atteignables depuis la console. C'est la première pierre de l'inspecteur, et
+ * ce sur quoi s'appuient les tests de bout en bout.
  */
 (window as unknown as Record<string, unknown>)['t0'] = {
-  world,
-  stores,
-  engine,
-  snapshot: () => world.snapshot(),
-  /** L'instantané retenu par la touche O, ou null tant qu'aucun n'a été pris. */
-  get saved(): Snapshot | null {
+  get simulation() {
+    return simulation;
+  },
+  get world() {
+    return simulation.world;
+  },
+  get stores() {
+    return simulation.stores;
+  },
+  get saved() {
     return saved;
   },
+  get lastRecording() {
+    return lastRecording;
+  },
+  engine,
+  replay,
+  compare,
 };
 
-spawnWorld();
 keyboard.attach();
 resize();
 window.addEventListener('resize', resize, { passive: true });
+setVerdict('appuyez sur R pour enregistrer une session', 'neutre');
 engine.start();
 setInterval(refreshOverlay, 250);
 refreshOverlay();

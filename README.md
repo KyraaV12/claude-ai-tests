@@ -6,8 +6,8 @@ Bac à sable pour un moteur de jeu en TypeScript, servi dans le navigateur.
 
 | Chemin | Rôle |
 | --- | --- |
-| `src/core/` | Boucle à pas fixe, monde entité/composant, sérialisation, aléatoire à graine |
-| `src/systems/` | Saisie clavier, déplacement, rendu canvas |
+| `src/core/` | Boucle à pas fixe, monde entité/composant, sérialisation, aléatoire à graine, pas de simulation, enregistrement et rejeu |
+| `src/systems/` | Saisie clavier, déplacement, collisions, rendu canvas |
 | `web/` | Pages statiques : le banc d'essai à la racine, la tranche T0 sous `game/` |
 | `test/` | Tests unitaires, exécutés par le lanceur intégré de Node |
 | `scripts/build.mjs` | Construction : esbuild pour le bundle, copie de `web/` vers `dist/` |
@@ -28,6 +28,16 @@ npx serve dist    # ou : python3 -m http.server -d dist 8000
 **La simulation est déterministe.** Pas de temps fixe, jamais de `Math.random()` dans le code de simulation — un générateur à graine à la place. Deux exécutions avec les mêmes entrées donnent le même état, condition nécessaire aux sauvegardes comparables et à la réplication réseau.
 
 **L'état du jeu est une donnée pure.** Les composants ne portent aucune méthode ; `World.snapshot()` produit du JSON sérialisable tel quel, `World.restore()` le reprend. Sauvegarde, comparaison et transport réseau reposent tous sur ce couple.
+
+**Un seul chemin de code fait avancer le monde.** `Simulation.step(input)` est le seul endroit où l'état change. La boucle du navigateur et le rejeu hors écran l'appellent tous les deux : si le rejeu passait ailleurs, il ne prouverait rien sur le jeu réel. `step()` ne lit ni l'horloge ni `Math.random()` — son argument suffit.
+
+## Enregistrer, rejouer, comparer
+
+Une partie tient dans une graine et la suite des entrées, pas par pas (`Recording`). `replay()` la rejoue depuis un monde neuf, `compare()` confronte les deux états finaux et **situe le premier écart** — `components.transform[3][1].x` plutôt qu'un simple « différent ».
+
+Dans la page, <kbd>R</kbd> enregistre puis rejoue et compare. Une session d'une centaine de pas pèse environ 1,5 ko d'entrées, là où la suite des instantanés correspondants en pèserait des centaines de kilo-octets.
+
+C'est la brique commune à trois choses à venir : sauvegardes comparables, reproduction d'un bug à partir d'un enregistrement, et réconciliation réseau.
 
 ## Publication
 
