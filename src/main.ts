@@ -1,4 +1,4 @@
-import { Simulation, WORLD_BOUNDS, STEPS_PER_SECOND } from './core/simulation.ts';
+import { Simulation, STEPS_PER_SECOND } from './core/simulation.ts';
 import type { Snapshot } from './core/world.ts';
 import { Engine } from './core/engine.ts';
 import { Recorder, replay, compare } from './core/replay.ts';
@@ -7,7 +7,11 @@ import { Keyboard } from './systems/input.ts';
 import { render } from './systems/render.ts';
 import type { Palette } from './systems/render.ts';
 import { createInspector } from './tools/panel.ts';
-import { findNearest, toWorldPoint } from './tools/inspect.ts';
+import { findNearest } from './tools/inspect.ts';
+import { ChunkCache, CHUNK_SIZE, chunkCoordOf } from './world/chunk.ts';
+import { TerrainPainter } from './systems/terrain-painter.ts';
+import { createCamera, follow, screenToWorld } from './world/camera.ts';
+import { biomeAt } from './world/terrain.ts';
 
 const SEED = 20260826;
 
@@ -22,25 +26,26 @@ if (!canvas || !overlay || !verdict || !inspectorHost) {
 const ctx = canvas.getContext('2d');
 if (!ctx) throw new Error('Canvas 2D indisponible dans ce navigateur');
 
-let simulation = new Simulation(SEED, WORLD_BOUNDS);
+let simulation = new Simulation(SEED);
 let recorder: Recorder | null = null;
 let lastRecording: Recording | null = null;
 let saved: Snapshot | null = null;
 let savedNote = 'aucun';
 
+// Le décor : un cache d'une fonction, pas un état du jeu. On peut le vider
+// sans rien perdre, il se recalcule à l'identique.
+const chunks = new ChunkCache(SEED);
+const painter = new TerrainPainter();
+// Échelle 2,4 : on voit environ trois mille unités de large, soit plusieurs
+// reliefs à la fois. À l'échelle 1 le monde se réduisait à un seul biome.
+const camera = createCamera(simulation.spawn.x, simulation.spawn.y, 2.4);
 const keyboard = new Keyboard();
 
 function readPalette(): Palette {
   const style = getComputedStyle(document.documentElement);
   const read = (name: string, fallback: string): string =>
     style.getPropertyValue(name).trim() || fallback;
-  return {
-    surface: read('--surface', '#f9fafc'),
-    grid: read('--grid', '#c6d0de'),
-    ink: read('--ink', '#0f141c'),
-    outline: read('--line-strong', '#b7c1ce'),
-    accent: read('--accent', '#22409e'),
-  };
+  return { ink: read('--ink', '#0f141c'), accent: read('--accent', '#22409e') };
 }
 
 let palette = readPalette();
@@ -48,13 +53,13 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
   palette = readPalette();
 });
 
-let cssSize = { width: 0, height: 0 };
+let viewport = { width: 0, height: 0 };
 function resize(): void {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const rect = canvas!.getBoundingClientRect();
-  cssSize = { width: Math.max(rect.width, 1), height: Math.max(rect.height, 1) };
-  canvas!.width = Math.round(cssSize.width * dpr);
-  canvas!.height = Math.round(cssSize.height * dpr);
+  viewport = { width: Math.max(rect.width, 1), height: Math.max(rect.height, 1) };
+  canvas!.width = Math.round(viewport.width * dpr);
+  canvas!.height = Math.round(viewport.height * dpr);
   ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
@@ -63,21 +68,21 @@ function setVerdict(text: string, tone: 'neutre' | 'ok' | 'alerte'): void {
   verdict!.dataset['tone'] = tone;
 }
 
-/**
- * Démarre un enregistrement sur un monde neuf.
- *
- * Repartir de zéro est ce qui rend la comparaison possible : le rejeu n'a que
- * la graine et les entrées, il doit donc partir du même état initial que la
- * session enregistrée.
- */
+function playerPosition(): { x: number; y: number } {
+  const transform = simulation.stores.transform.get(1);
+  return transform ? { x: transform.x, y: transform.y } : simulation.spawn;
+}
+
+/** Démarre un enregistrement sur un monde neuf, moteur en marche. */
 function startRecording(): void {
-  // Enregistrer depuis un moteur en pause donnerait une session vide.
   engine.resume();
-  simulation = new Simulation(SEED, WORLD_BOUNDS);
+  simulation = new Simulation(SEED);
   recorder = new Recorder(SEED);
   saved = null;
   savedNote = 'aucun';
   inspector.select(null);
+  camera.x = simulation.spawn.x;
+  camera.y = simulation.spawn.y;
   setVerdict('enregistrement en cours — rejouez avec R', 'neutre');
 }
 
@@ -88,11 +93,9 @@ function stopAndVerify(): void {
   recorder = null;
   lastRecording = recording;
 
-  const live = simulation.snapshot();
-  const replayed = replay(recording, WORLD_BOUNDS);
-  const result = compare(live, replayed);
-
+  const result = compare(simulation.snapshot(), replay(recording));
   const size = JSON.stringify(recording).length;
+
   if (result.identical) {
     setVerdict(
       `${recording.frames.length} pas rejoués depuis ${size} octets d'entrées — état final identique`,
@@ -105,7 +108,6 @@ function stopAndVerify(): void {
 
 window.addEventListener('keydown', (event) => {
   if (event.repeat) return;
-  // Les raccourcis de l'outil ne doivent pas s'appliquer pendant qu'on édite.
   if (event.target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName)) return;
 
   if (event.code === 'Space') {
@@ -132,13 +134,24 @@ const engine = new Engine(
   {
     fixedUpdate() {
       const input = keyboard.axis();
-      // L'entrée est capturée avant d'être consommée : ce qui est enregistré
-      // est exactement ce que la simulation a reçu, pas une approximation.
       recorder?.capture(input);
       simulation.step(input);
     },
     render(alpha) {
-      render(ctx!, simulation.stores, alpha, WORLD_BOUNDS, palette, cssSize, inspector.selected());
+      // La caméra suit avec le temps réel : elle appartient à l'affichage, pas
+      // à la simulation, et ne peut donc pas fausser un rejeu.
+      const target = playerPosition();
+      follow(camera, target.x, target.y, 1 / 60);
+      render(ctx!, {
+        stores: simulation.stores,
+        chunks,
+        painter,
+        camera,
+        viewport,
+        palette,
+        alpha,
+        highlight: inspector.selected(),
+      });
     },
   },
   STEPS_PER_SECOND,
@@ -151,29 +164,27 @@ const inspector = createInspector({
   engine,
 });
 
-// Cliquer dans l'aire de jeu sélectionne ce qu'on désigne.
 canvas.addEventListener('pointerdown', (event) => {
-  const point = toWorldPoint(event.clientX, event.clientY, canvas.getBoundingClientRect(), WORLD_BOUNDS);
-  inspector.select(findNearest(simulation.stores, point.x, point.y, WORLD_BOUNDS));
+  const rect = canvas.getBoundingClientRect();
+  const point = screenToWorld(camera, viewport, event.clientX - rect.left, event.clientY - rect.top);
+  inspector.select(findNearest(simulation.stores, point.x, point.y));
 });
 
 function refreshOverlay(): void {
   const stats = engine.getStats();
+  const position = playerPosition();
   inspector.refresh();
   overlay!.textContent = [
     engine.isPaused ? '⏸ en pause' : `${stats.fps.toFixed(0)} i/s`,
-    `t = ${simulation.elapsedSeconds.toFixed(1)} s`,
-    `${simulation.world.entityCount} entités`,
-    recorder ? `● ${recorder.frameCount} pas enregistrés` : 'enregistrement : arrêté',
-    `instantané : ${savedNote}`,
+    `${position.x.toFixed(0)}, ${position.y.toFixed(0)}`,
+    `morceau ${chunkCoordOf(position.x)}, ${chunkCoordOf(position.y)}`,
+    biomeAt(SEED, position.x, position.y),
+    `${chunks.size} en mémoire · ${chunks.generationCount} calculés`,
+    recorder ? `● ${recorder.frameCount} pas` : `${simulation.world.entityCount} entités`,
   ].join('   ·   ');
 }
 
-/**
- * Surface d'inspection : le monde, la simulation et le dernier enregistrement,
- * atteignables depuis la console. C'est la première pierre de l'inspecteur, et
- * ce sur quoi s'appuient les tests de bout en bout.
- */
+/** Surface d'inspection, première pierre de l'outillage — et appui des tests. */
 (window as unknown as Record<string, unknown>)['t0'] = {
   get simulation() {
     return simulation;
@@ -190,10 +201,14 @@ function refreshOverlay(): void {
   get lastRecording() {
     return lastRecording;
   },
+  camera,
+  chunks,
+  painter,
   engine,
   inspector,
   replay,
   compare,
+  CHUNK_SIZE,
 };
 
 keyboard.attach();

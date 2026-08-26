@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Simulation, WORLD_BOUNDS } from '../src/core/simulation.ts';
+import { Simulation } from '../src/core/simulation.ts';
 import { World } from '../src/core/world.ts';
 import { createStores, transformAt } from '../src/core/components.ts';
 import type { Stores } from '../src/core/components.ts';
@@ -11,7 +11,6 @@ import {
   listEntities,
   parseFieldInput,
   setField,
-  toWorldPoint,
 } from '../src/tools/inspect.ts';
 
 function scene(): { world: World; stores: Stores } {
@@ -96,7 +95,7 @@ test('findNearest désigne l entité sous le point', () => {
   stores.transform.set(far, transformAt(500, 500));
   stores.body.set(far, { radius: 10, mass: 1 });
 
-  assert.equal(findNearest(stores, 105, 100, WORLD_BOUNDS), near);
+  assert.equal(findNearest(stores, 105, 100), near);
 });
 
 test('findNearest ne renvoie rien quand le point est loin de tout', () => {
@@ -105,17 +104,7 @@ test('findNearest ne renvoie rien quand le point est loin de tout', () => {
   stores.transform.set(entity, transformAt(100, 100));
   stores.body.set(entity, { radius: 10, mass: 1 });
 
-  assert.equal(findNearest(stores, 500, 500, WORLD_BOUNDS), null);
-});
-
-test('findNearest voit à travers les bords repliés', () => {
-  const { world, stores } = scene();
-  const entity = world.create();
-  stores.transform.set(entity, transformAt(5, 300));
-  stores.body.set(entity, { radius: 10, mass: 1 });
-
-  // Cliquer juste avant le bord droit doit désigner ce qu'on voit apparaître.
-  assert.equal(findNearest(stores, WORLD_BOUNDS.width - 5, 300, WORLD_BOUNDS), entity);
+  assert.equal(findNearest(stores, 500, 500), null);
 });
 
 test('findNearest préfère la plus proche quand deux se chevauchent', () => {
@@ -127,30 +116,14 @@ test('findNearest préfère la plus proche quand deux se chevauchent', () => {
   stores.transform.set(b, transformAt(112, 100));
   stores.body.set(b, { radius: 10, mass: 1 });
 
-  assert.equal(findNearest(stores, 111, 100, WORLD_BOUNDS), b);
-});
-
-test('toWorldPoint annule la mise à l échelle et le centrage', () => {
-  // Canevas plus large que le monde : des bandes apparaissent à gauche et à droite.
-  const rect = { left: 0, top: 0, width: 2000, height: 600 };
-  const centre = toWorldPoint(1000, 300, rect, WORLD_BOUNDS);
-
-  assert.ok(Math.abs(centre.x - WORLD_BOUNDS.width / 2) < 1e-9, `x = ${centre.x}`);
-  assert.ok(Math.abs(centre.y - WORLD_BOUNDS.height / 2) < 1e-9, `y = ${centre.y}`);
-});
-
-test('toWorldPoint tient compte de la position du canevas dans la page', () => {
-  const rect = { left: 40, top: 20, width: 1000, height: 600 };
-  const point = toWorldPoint(40, 20, rect, WORLD_BOUNDS);
-
-  assert.ok(Math.abs(point.x) < 1e-9 && Math.abs(point.y) < 1e-9, `${point.x}, ${point.y}`);
+  assert.equal(findNearest(stores, 111, 100), b);
 });
 
 test('l inspecteur voit toutes les entités d une simulation réelle', () => {
-  const simulation = new Simulation(1, WORLD_BOUNDS);
+  const simulation = new Simulation(1);
   const entities = listEntities(simulation.world);
 
-  assert.equal(entities.length, 25);
+  assert.equal(entities.length, 13);
   assert.deepEqual(componentsOf(simulation.stores, entities[0]!), [
     'transform',
     'velocity',

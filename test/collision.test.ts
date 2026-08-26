@@ -4,9 +4,6 @@ import { World } from '../src/core/world.ts';
 import { createStores, transformAt } from '../src/core/components.ts';
 import type { Stores } from '../src/core/components.ts';
 import { resolveCollisions } from '../src/systems/collision.ts';
-import type { Bounds } from '../src/systems/movement.ts';
-
-const BOUNDS: Bounds = { width: 1000, height: 600 };
 
 function scene(): { world: World; stores: Stores } {
   const world = new World();
@@ -46,7 +43,7 @@ test('deux corps éloignés ne s influencent pas', () => {
   const a = put(world, stores, 100, 100, 5, 0);
   put(world, stores, 400, 100, 0, 0);
 
-  resolveCollisions(stores, BOUNDS);
+  resolveCollisions(stores);
 
   assert.deepEqual(stores.velocity.get(a), { x: 5, y: 0 });
 });
@@ -57,7 +54,7 @@ test('un choc conserve la quantité de mouvement', () => {
   put(world, stores, 115, 100, -10, 0, 10, 3);
 
   const before = momentum(stores);
-  resolveCollisions(stores, BOUNDS);
+  resolveCollisions(stores);
   const after = momentum(stores);
 
   assert.ok(Math.abs(after.x - before.x) < 1e-9, `px ${before.x} -> ${after.x}`);
@@ -69,7 +66,7 @@ test('un choc frontal inverse bien les vitesses', () => {
   const a = put(world, stores, 100, 100, 20, 0, 10, 1);
   const b = put(world, stores, 118, 100, -20, 0, 10, 1);
 
-  resolveCollisions(stores, BOUNDS);
+  resolveCollisions(stores);
 
   assert.ok(stores.velocity.get(a)!.x < 0, 'a doit repartir vers la gauche');
   assert.ok(stores.velocity.get(b)!.x > 0, 'b doit repartir vers la droite');
@@ -80,7 +77,7 @@ test('le chevauchement est résorbé', () => {
   const a = put(world, stores, 100, 100, 0, 0, 10, 1);
   const b = put(world, stores, 105, 100, 0, 0, 10, 1);
 
-  resolveCollisions(stores, BOUNDS);
+  resolveCollisions(stores);
 
   const ta = stores.transform.get(a)!;
   const tb = stores.transform.get(b)!;
@@ -92,7 +89,7 @@ test('un corps lourd est moins déplacé qu un léger', () => {
   const heavy = put(world, stores, 100, 100, 0, 0, 10, 100);
   const light = put(world, stores, 105, 100, 0, 0, 10, 1);
 
-  resolveCollisions(stores, BOUNDS);
+  resolveCollisions(stores);
 
   const movedHeavy = Math.abs(stores.transform.get(heavy)!.x - 100);
   const movedLight = Math.abs(stores.transform.get(light)!.x - 105);
@@ -104,23 +101,23 @@ test('deux corps qui s éloignent déjà ne sont pas rappelés', () => {
   const a = put(world, stores, 100, 100, -30, 0, 10, 1);
   const b = put(world, stores, 115, 100, 30, 0, 10, 1);
 
-  resolveCollisions(stores, BOUNDS);
+  resolveCollisions(stores);
 
   // Le chevauchement est corrigé, mais les vitesses ne doivent pas s'inverser.
   assert.equal(stores.velocity.get(a)!.x, -30);
   assert.equal(stores.velocity.get(b)!.x, 30);
 });
 
-test('la collision voit à travers les bords repliés', () => {
+test('le monde étant ouvert, deux corps éloignés le restent', () => {
   const { world, stores } = scene();
+  // Autrefois voisins par le repli des bords ; désormais simplement distants.
   const a = put(world, stores, 5, 300, -10, 0, 10, 1);
-  const b = put(world, stores, BOUNDS.width - 5, 300, 10, 0, 10, 1);
+  const b = put(world, stores, 995, 300, 10, 0, 10, 1);
 
-  resolveCollisions(stores, BOUNDS);
+  resolveCollisions(stores);
 
-  // Ils sont à 10 unités l'un de l'autre en passant par le bord, donc en contact.
-  assert.ok(stores.velocity.get(a)!.x > -10, 'a doit avoir été freiné ou repoussé');
-  assert.ok(stores.velocity.get(b)!.x < 10, 'b doit avoir été freiné ou repoussé');
+  assert.equal(stores.velocity.get(a)!.x, -10);
+  assert.equal(stores.velocity.get(b)!.x, 10);
 });
 
 test('des corps exactement superposés se séparent sans produire de NaN', () => {
@@ -128,7 +125,7 @@ test('des corps exactement superposés se séparent sans produire de NaN', () =>
   const a = put(world, stores, 200, 200, 0, 0, 10, 1);
   const b = put(world, stores, 200, 200, 0, 0, 10, 1);
 
-  resolveCollisions(stores, BOUNDS);
+  resolveCollisions(stores);
 
   for (const entity of [a, b]) {
     const t = stores.transform.get(entity)!;

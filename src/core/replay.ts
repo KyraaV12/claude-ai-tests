@@ -1,7 +1,6 @@
-import { Simulation, WORLD_BOUNDS } from './simulation.ts';
+import { Simulation } from './simulation.ts';
 import type { InputFrame } from './simulation.ts';
 import type { Snapshot } from './world.ts';
-import type { Bounds } from '../systems/movement.ts';
 
 /**
  * Une partie enregistrée : une graine, et la suite des entrées pas à pas.
@@ -39,8 +38,8 @@ export class Recorder {
 }
 
 /** Rejoue un enregistrement depuis un monde neuf et rend l'état final. */
-export function replay(recording: Recording, bounds: Bounds = WORLD_BOUNDS): Snapshot {
-  const simulation = new Simulation(recording.seed, bounds);
+export function replay(recording: Recording): Snapshot {
+  const simulation = new Simulation(recording.seed);
   for (const frame of recording.frames) simulation.step(frame);
   return simulation.snapshot();
 }

@@ -3,23 +3,12 @@ import assert from 'node:assert/strict';
 import { World } from '../src/core/world.ts';
 import { createStores, transformAt } from '../src/core/components.ts';
 import type { Stores } from '../src/core/components.ts';
-import { wrap, integrate, applyControl } from '../src/systems/movement.ts';
-import type { Bounds } from '../src/systems/movement.ts';
-
-const BOUNDS: Bounds = { width: 100, height: 100 };
+import { integrate, applyControl } from '../src/systems/movement.ts';
 
 function scene(): { world: World; stores: Stores } {
   const world = new World();
   return { world, stores: createStores(world) };
 }
-
-test('wrap ramène dans les bornes, y compris pour les négatifs', () => {
-  assert.equal(wrap(10, 100), 10);
-  assert.equal(wrap(100, 100), 0);
-  assert.equal(wrap(-1, 100), 99);
-  assert.equal(wrap(-101, 100), 99);
-  assert.equal(wrap(250, 100), 50);
-});
 
 test('la position avance du produit vitesse × temps', () => {
   const { world, stores } = scene();
@@ -27,25 +16,33 @@ test('la position avance du produit vitesse × temps', () => {
   stores.transform.set(entity, transformAt(10, 10));
   stores.velocity.set(entity, { x: 60, y: 0 });
 
-  integrate(stores, 0.5, BOUNDS);
+  integrate(stores, 0.5);
 
   assert.equal(stores.transform.get(entity)?.x, 40);
 });
 
-test('franchir un bord garde le déplacement interpolé continu', () => {
+test('le monde est ouvert : rien n arrête une entité qui s éloigne', () => {
+  const { world, stores } = scene();
+  const entity = world.create();
+  stores.transform.set(entity, transformAt(0, 0));
+  stores.velocity.set(entity, { x: 1000, y: 0 });
+
+  for (let i = 0; i < 600; i++) integrate(stores, 1 / 60);
+
+  assert.ok(stores.transform.get(entity)!.x > 9000, 'aucune bordure ne doit la replier');
+});
+
+test('la position précédente suit le pas, pour que le rendu interpole juste', () => {
   const { world, stores } = scene();
   const entity = world.create();
   stores.transform.set(entity, transformAt(98, 50));
   stores.velocity.set(entity, { x: 40, y: 0 });
 
-  integrate(stores, 0.1, BOUNDS); // 98 → 102 → replié à 2
+  integrate(stores, 0.1);
 
   const transform = stores.transform.get(entity)!;
-  assert.equal(transform.x, 2);
-  // Sans le décalage de la position précédente, on aurait 98 ici, et le rendu
-  // ferait traverser tout l'écran à l'entité sur une seule image.
-  assert.equal(transform.previousX, -2);
-  assert.equal(transform.x - transform.previousX, 4, 'le pas interpolé doit valoir le déplacement réel');
+  assert.equal(transform.previousX, 98);
+  assert.equal(transform.x, 102);
 });
 
 test('une entité sans vitesse ne bouge pas', () => {
@@ -53,7 +50,7 @@ test('une entité sans vitesse ne bouge pas', () => {
   const entity = world.create();
   stores.transform.set(entity, transformAt(30, 30));
 
-  integrate(stores, 1, BOUNDS);
+  integrate(stores, 1);
 
   assert.deepEqual(stores.transform.get(entity), transformAt(30, 30));
 });

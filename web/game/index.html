@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Inspecteur d'entités</title>
+<title>Monde ouvert procédural</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400..600&display=swap">
@@ -140,15 +140,15 @@
 </head>
 <body>
   <header>
-    <p class="eyebrow">claude-ai-tests · tranche T2</p>
-    <h1>Inspecteur d'entités</h1>
+    <p class="eyebrow">claude-ai-tests · tranche T3</p>
+    <h1>Monde ouvert</h1>
     <p class="eyebrow"><a href="../">← banc d'essai</a></p>
   </header>
 
   <div class="workspace">
     <div class="play">
       <div class="stage">
-        <canvas id="scene" tabindex="0" aria-label="Aire de simulation — cliquez pour sélectionner une entité"></canvas>
+        <canvas id="scene" tabindex="0" aria-label="Le monde — cliquez pour sélectionner une entité"></canvas>
       </div>
       <div id="overlay" role="status" aria-live="off">initialisation…</div>
       <p id="verdict" role="status" data-tone="neutre">initialisation…</p>
@@ -167,11 +167,11 @@
     <li><kbd>P</kbd><span>le restaurer</span></li>
   </ul>
 
-  <p class="note">Cliquez dans l'aire de jeu pour sélectionner ce que vous désignez, ou choisissez une entité dans la liste. Les champs sont modifiables à chaud : changez une masse ou une vitesse et regardez la simulation en tenir compte au pas suivant. En pause, le rendu n'interpole plus — ce que vous voyez est exactement l'état que vous éditez.</p>
+  <p class="note">Le monde est infini et n'existe nulle part. Le terrain n'est pas une donnée : c'est une fonction de la graine et du point, échantillonnée à la demande par morceaux de 320 unités. Éloignez-vous, les morceaux derrière vous sont jetés ; revenez, ils se recalculent à l'identique. Le compteur de l'état montre les deux nombres : ce qui est en mémoire, et ce qui a été calculé depuis le début.</p>
 
-  <p class="note">Modifier une valeur pendant un enregistrement fera diverger le rejeu, et la comparaison le dira : elle ne connaît que la graine et vos touches, pas vos retouches. C'est le comportement attendu, et la démonstration que la vérification sait aussi répondre non.</p>
+  <p class="note">C'est la distinction qui rend un monde ouvert tenable : <strong>les entités sont l'état</strong> — sauvegardées, comparées, un jour répliquées — tandis que <strong>le décor est dérivé</strong>, jamais sauvegardé, jamais transmis. Seule la graine voyage. Un rejeu retrouve donc le même monde sans que l'enregistrement contienne un seul arbre.</p>
 
-  <p class="note">La simulation avance à 60 pas fixes par seconde ; le monde fait 1000 × 600 unités et se replie sur lui-même aux bords — les collisions et la sélection au clic aussi.</p>
+  <p class="note">Le point de départ est cherché en spirale depuis l'origine jusqu'à la terre ferme : selon la graine, l'origine est noyée une fois sur trois. Cliquez dans le monde pour sélectionner une entité, ou choisissez-la dans la liste ; les champs sont modifiables à chaud. En pause, le rendu n'interpole plus — ce que vous voyez est exactement l'état que vous éditez.</p>
 
   <script type="module" src="./app.js"></script>
 </body>
