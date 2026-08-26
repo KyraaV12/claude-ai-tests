@@ -32,8 +32,10 @@ export interface Sprite {
   hue: number;
 }
 
-/** Marque une entité pilotée par la saisie du joueur. */
+/** Marque une entité pilotée par un joueur, désigné par son identifiant. */
 export interface Controlled {
+  /** À qui obéit cette entité. Un monde peut en compter plusieurs. */
+  player: number;
   acceleration: number;
   maxSpeed: number;
   /** Freinage par seconde, appliqué quand aucune direction n'est demandée. */

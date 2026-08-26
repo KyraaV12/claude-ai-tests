@@ -1,4 +1,5 @@
 import type { Axis } from './input.ts';
+import type { Entity } from '../core/world.ts';
 import type { Stores } from '../core/components.ts';
 
 /**
@@ -8,11 +9,16 @@ import type { Stores } from '../core/components.ts';
  * indéfiniment. Ce qui la retient est le décor et le jeu, pas une bordure.
  */
 
-/** Traduit la direction demandée en accélération, puis borne la vitesse. */
-export function applyControl(stores: Stores, axis: Axis, dt: number): void {
-  for (const [entity, control] of stores.controlled.entries()) {
-    const velocity = stores.velocity.get(entity);
-    if (!velocity) continue;
+/**
+ * Traduit la direction demandée en accélération, puis borne la vitesse.
+ *
+ * Agit sur une entité désignée, et non sur toutes les entités pilotées : dès
+ * qu'un monde compte plusieurs joueurs, chacun a sa propre demande.
+ */
+export function applyControl(stores: Stores, entity: Entity, axis: Axis, dt: number): void {
+  const control = stores.controlled.get(entity);
+  const velocity = stores.velocity.get(entity);
+  if (control && velocity) {
 
     if (axis.x !== 0 || axis.y !== 0) {
       velocity.x += axis.x * control.acceleration * dt;

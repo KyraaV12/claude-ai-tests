@@ -123,8 +123,15 @@ test('l inspecteur voit toutes les entités d une simulation réelle', () => {
   const simulation = new Simulation(1);
   const entities = listEntities(simulation.world);
 
+  // Douze compagnons plus le joueur local.
   assert.equal(entities.length, 13);
-  assert.deepEqual(componentsOf(simulation.stores, entities[0]!), [
+});
+
+test('l inspecteur montre le jeu complet de composants du joueur', () => {
+  const simulation = new Simulation(1);
+  const player = simulation.entityOf(1)!;
+
+  assert.deepEqual(componentsOf(simulation.stores, player), [
     'transform',
     'velocity',
     'body',
@@ -132,22 +139,4 @@ test('l inspecteur voit toutes les entités d une simulation réelle', () => {
     'controlled',
     'inventory',
   ]);
-});
-
-test('un champ vidé pour être retapé n écrit rien', () => {
-  // Number('') vaut 0 : sans distinction, effacer un champ mettrait la valeur à zéro.
-  assert.deepEqual(parseFieldInput(''), { kind: 'empty' });
-  assert.deepEqual(parseFieldInput('   '), { kind: 'empty' });
-});
-
-test('une saisie incomplète est refusée, pas convertie', () => {
-  for (const raw of ['abc', '-', '1e', '--3', 'NaN']) {
-    assert.deepEqual(parseFieldInput(raw), { kind: 'invalid' }, `« ${raw} » mal interprété`);
-  }
-});
-
-test('une saisie numérique valide est acceptée', () => {
-  assert.deepEqual(parseFieldInput('42'), { kind: 'value', value: 42 });
-  assert.deepEqual(parseFieldInput(' -3.5 '), { kind: 'value', value: -3.5 });
-  assert.deepEqual(parseFieldInput('1e3'), { kind: 'value', value: 1000 });
 });

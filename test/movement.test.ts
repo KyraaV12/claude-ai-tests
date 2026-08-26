@@ -59,9 +59,9 @@ test('la vitesse est bornée par maxSpeed', () => {
   const { world, stores } = scene();
   const entity = world.create();
   stores.velocity.set(entity, { x: 0, y: 0 });
-  stores.controlled.set(entity, { acceleration: 10000, maxSpeed: 200, damping: 2, facingX: 0, facingY: 1, buildCooldown: 0, harvestCooldown: 0 });
+  stores.controlled.set(entity, { player: 1, acceleration: 10000, maxSpeed: 200, damping: 2, facingX: 0, facingY: 1, buildCooldown: 0, harvestCooldown: 0 });
 
-  applyControl(stores, { x: 1, y: 0 }, 1);
+  applyControl(stores, entity, { x: 1, y: 0 }, 1);
 
   const velocity = stores.velocity.get(entity)!;
   assert.equal(Math.round(Math.hypot(velocity.x, velocity.y)), 200);
@@ -71,9 +71,9 @@ test('sans direction demandée, la vitesse retombe vers zéro', () => {
   const { world, stores } = scene();
   const entity = world.create();
   stores.velocity.set(entity, { x: 100, y: 0 });
-  stores.controlled.set(entity, { acceleration: 500, maxSpeed: 200, damping: 2, facingX: 0, facingY: 1, buildCooldown: 0, harvestCooldown: 0 });
+  stores.controlled.set(entity, { player: 1, acceleration: 500, maxSpeed: 200, damping: 2, facingX: 0, facingY: 1, buildCooldown: 0, harvestCooldown: 0 });
 
-  for (let i = 0; i < 60; i++) applyControl(stores, { x: 0, y: 0 }, 1 / 60);
+  for (let i = 0; i < 60; i++) applyControl(stores, entity, { x: 0, y: 0 }, 1 / 60);
 
   assert.ok(Math.abs(stores.velocity.get(entity)!.x) < 20);
 });
@@ -83,9 +83,9 @@ test('le freinage ne renvoie jamais l entité en arrière', () => {
   const entity = world.create();
   stores.velocity.set(entity, { x: 100, y: 0 });
   // damping × dt > 1 : le facteur naïf 1 - damping·dt deviendrait négatif.
-  stores.controlled.set(entity, { acceleration: 500, maxSpeed: 200, damping: 50, facingX: 0, facingY: 1, buildCooldown: 0, harvestCooldown: 0 });
+  stores.controlled.set(entity, { player: 1, acceleration: 500, maxSpeed: 200, damping: 50, facingX: 0, facingY: 1, buildCooldown: 0, harvestCooldown: 0 });
 
-  applyControl(stores, { x: 0, y: 0 }, 0.1);
+  applyControl(stores, entity, { x: 0, y: 0 }, 0.1);
 
   assert.equal(stores.velocity.get(entity)!.x, 0);
 });
