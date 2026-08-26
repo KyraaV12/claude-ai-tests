@@ -163,6 +163,7 @@
     <li><kbd>F</kbd><span>récolter ce qui est à portée</span></li>
     <li><kbd>E</kbd><span>poser un mur (2 pierres)</span></li>
     <li><kbd>T</kbd><span>planter une torche (1 bois, 1 fibre)</span></li>
+    <li><kbd>V</kbd><span>basculer en vue subjective</span></li>
     <li><kbd>Espace</kbd><span>pause</span></li>
     <li><kbd>.</kbd><span>avancer d'un pas</span></li>
     <li><kbd>R</kbd><span>enregistrer, puis rejouer et comparer</span></li>
@@ -181,6 +182,10 @@
   <p class="note"><em>Réserve honnête</em> : le transport est un <code>BroadcastChannel</code>, qui ne franchit pas le navigateur. Ce n'est pas du multijoueur par Internet — c'est un banc d'essai du netcode sur un site statique, où aucun serveur ne peut vivre. Le transport étant une interface, un WebSocket ou un WebRTC se substituerait sans toucher au netcode.</p>
 
   <p class="note"><kbd>F</kbd> récolte ce qui est à portée, et <strong>chaque biome donne autre chose</strong> : la forêt du bois, les rochers de la pierre, les buissons et les roseaux de la fibre. <kbd>E</kbd> pose un mur contre deux pierres, <kbd>T</kbd> plante une torche contre un bois et une fibre. Quatre bois, six pierres et deux fibres au départ : au-delà, il faut aller chercher — et donc traverser des biomes différents.</p>
+
+  <p class="note"><strong><kbd>V</kbd> passe à la première personne.</strong> Vous y êtes au ras du sol, à hauteur d'yeux : <kbd>W</kbd>/<kbd>S</kbd> pour avancer et reculer, <kbd>A</kbd>/<kbd>D</kbd> pour vous déporter, <kbd>←</kbd>/<kbd>→</kbd> pour tourner — ou cliquez pour capturer la souris et regarder librement. C'est la nuit qu'elle prend tout son sens : une torche isolée dans une forêt noire ne ressemble à rien d'autre.</p>
+
+  <p class="note"><strong>La vue subjective ne change rien au jeu.</strong> Le monde reste plat, la simulation identique : une première personne n'est qu'une autre façon de projeter les mêmes coordonnées. La direction du regard n'est pas de l'état — elle vit dans l'affichage, et seule la direction du <em>déplacement</em> qui en résulte entre dans la trame d'entrée. C'est pour cela que l'empreinte du scénario, le rejeu et le réseau n'ont pas bougé d'un bit. <em>Réserve</em> : les autres joueurs ne voient donc pas où vous regardez. Tant qu'aucune action ne vise, cela ne coûte rien.</p>
 
   <p class="note"><strong>La nuit tombe, et il faut de la lumière.</strong> Le cycle dure deux minutes : lever, plein jour, crépuscule, nuit. C'est là que les torches cessent d'être décoratives — et que les loups sortent. Le jour appartient aux cerfs, qui s'écartent dès qu'on approche ; la nuit aux loups, qui font l'inverse, et aux lucioles, qui éclairent faiblement en dérivant. Au lever du jour, chacun rentre chez soi, hors de votre vue.</p>
 

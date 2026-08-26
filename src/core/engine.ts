@@ -139,7 +139,11 @@ export class Engine {
 
     this.hooks.render(alpha);
 
-    if (elapsedSeconds > 0) {
+    // Une demi-milliseconde entre deux images, c'est une horloge qui vient
+    // d'être remise à zéro — au retour d'une pause — et non un affichage à
+    // deux mille images par seconde. Sans cette garde, la barre annonçait
+    // dix-neuf milliards d'images par seconde au premier tour après reprise.
+    if (elapsedSeconds >= 0.0005) {
       const instant = 1 / elapsedSeconds;
       // Lissage exponentiel : le compteur reste lisible sans mentir sur les à-coups.
       this.smoothedFps = this.smoothedFps === 0 ? instant : this.smoothedFps * 0.9 + instant * 0.1;
