@@ -36,9 +36,18 @@ jobs:
     # Rien n'est publié tant que les types et les tests ne passent pas : le site
     # en ligne ne peut pas être en avance sur ce qui a été vérifié.
     needs: check
-    # La branche, pas seulement l'événement : sans ça, un workflow_dispatch
-    # lancé depuis une branche publierait cette branche en production.
-    if: github.ref == 'refs/heads/main'
+    # Les deux conditions, pas une seule.
+    #
+    # La branche seule ne suffit pas : le job s'est exécuté sur une pull
+    # request et y a échoué en une seconde, sans étape ni journal — la
+    # signature des règles de protection de l'environnement github-pages, qui
+    # n'autorisent le déploiement que depuis la branche par défaut. Un deploy
+    # rouge sur chaque pull request érode le signal que la CI est censée
+    # donner.
+    #
+    # L'événement seul ne suffit pas non plus : un workflow_dispatch lancé
+    # depuis une branche publierait cette branche en production.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
