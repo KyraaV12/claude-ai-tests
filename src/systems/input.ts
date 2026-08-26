@@ -44,7 +44,8 @@ export class Keyboard {
     this.pressed.clear();
   }
 
-  /** Direction demandée, normalisée : une diagonale ne va pas plus vite qu'une ligne droite. */
+  /** Direction demandée, normalisée : une diagonale ne va pas plus vite qu'une ligne droite.
+   *  Les touches hors déplacement sont ignorées ici, et lues par `isPressed`. */
   axis(): Axis {
     let x = 0;
     let y = 0;
@@ -64,12 +65,13 @@ export class Keyboard {
 
   private onKeyDown = (event: Event): void => {
     const key = event as KeyboardEvent;
-    if (!(key.code in BINDINGS)) return;
     // Sans cette garde, régler une valeur dans l'inspecteur piloterait aussi
     // le joueur : les flèches serviraient les deux à la fois.
     if (isEditing(key.target)) return;
-    // Empêche les flèches de faire défiler la page pendant qu'on joue.
-    key.preventDefault();
+    // Toutes les touches sont retenues, pour que les actions puissent être
+    // interrogées comme les déplacements ; seules celles du déplacement
+    // empêchent le défilement de la page.
+    if (key.code in BINDINGS) key.preventDefault();
     this.pressed.add(key.code);
   };
 

@@ -5,13 +5,24 @@ import type { Stores } from './components.ts';
 import { createRandom } from './random.ts';
 import { applyControl, integrate } from '../systems/movement.ts';
 import { resolveCollisions } from '../systems/collision.ts';
+import { tickBuildCooldowns, tryBuild } from '../systems/build.ts';
+import type { BuildOutcome } from '../systems/build.ts';
 import { findSpawn } from '../world/terrain.ts';
 
-/** La direction demandée pour un pas de simulation. */
+/**
+ * Ce que le joueur demande pour un pas.
+ *
+ * Toute action doit passer par ici : un geste qui n'y figure pas ne serait pas
+ * enregistré, et le rejeu divergerait sans qu'on sache pourquoi.
+ */
 export interface InputFrame {
   x: number;
   y: number;
+  build: boolean;
 }
+
+/** L'entité pilotée. Sa création en premier lui donne un identifiant stable. */
+export const PLAYER: number = 1;
 
 export const STEPS_PER_SECOND = 60;
 export const STEP_SECONDS = 1 / STEPS_PER_SECOND;
@@ -35,6 +46,8 @@ export class Simulation {
   readonly seed: number;
   readonly spawn: { x: number; y: number };
   private steps = 0;
+  /** Résultat de la dernière tentative de pose, pour l'affichage. Hors état du monde. */
+  lastBuild: BuildOutcome | null = null;
 
   constructor(seed: number) {
     this.seed = seed;
@@ -54,7 +67,11 @@ export class Simulation {
   }
 
   step(input: InputFrame): void {
+    tickBuildCooldowns(this.stores);
     applyControl(this.stores, input, STEP_SECONDS);
+    if (input.build) {
+      this.lastBuild = tryBuild(this.world, this.stores, this.seed, PLAYER, this.steps);
+    }
     integrate(this.stores, STEP_SECONDS);
     resolveCollisions(this.stores);
     this.steps++;
@@ -73,7 +90,15 @@ export class Simulation {
     stores.velocity.set(player, { x: 0, y: 0 });
     stores.body.set(player, { radius: 16, mass: 4 });
     stores.sprite.set(player, { hue: 212 });
-    stores.controlled.set(player, { acceleration: 1100, maxSpeed: 380, damping: 2.4 });
+    stores.controlled.set(player, {
+      acceleration: 1100,
+      maxSpeed: 380,
+      damping: 2.4,
+      facingX: 0,
+      facingY: 1,
+      buildCooldown: 0,
+    });
+    stores.inventory.set(player, { blocs: 40 });
 
     // Quelques compagnons autour du départ. Ce sont des entités, donc de l'état
     // sauvegardé et répliqué — à l'inverse du décor, qui se recalcule.

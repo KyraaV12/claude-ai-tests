@@ -38,6 +38,30 @@ export interface Controlled {
   maxSpeed: number;
   /** Freinage par seconde, appliqué quand aucune direction n'est demandée. */
   damping: number;
+  /**
+   * Dernière direction demandée, vecteur unitaire. Conservée quand la saisie
+   * cesse : sans elle, on ne saurait plus où poser une construction dès que le
+   * joueur s'arrête. C'est de l'état, donc sérialisé et rejoué.
+   */
+  facingX: number;
+  facingY: number;
+  /** Pas restants avant de pouvoir reposer. Empêche la pose en rafale. */
+  buildCooldown: number;
+}
+
+/** Ce que porte une entité. Le début de l'inventaire du plan. */
+export interface Inventory {
+  blocs: number;
+}
+
+/**
+ * Une construction posée par le joueur.
+ *
+ * C'est de l'état, pas du décor : contrairement au terrain, elle ne se
+ * recalcule pas depuis la graine et doit donc être sauvegardée et transmise.
+ */
+export interface Structure {
+  placedAtStep: number;
 }
 
 export interface Stores {
@@ -46,6 +70,8 @@ export interface Stores {
   body: ComponentStore<Body>;
   sprite: ComponentStore<Sprite>;
   controlled: ComponentStore<Controlled>;
+  inventory: ComponentStore<Inventory>;
+  structure: ComponentStore<Structure>;
 }
 
 export function createStores(world: World): Stores {
@@ -55,6 +81,8 @@ export function createStores(world: World): Stores {
     body: world.register(new ComponentStore<Body>('body')),
     sprite: world.register(new ComponentStore<Sprite>('sprite')),
     controlled: world.register(new ComponentStore<Controlled>('controlled')),
+    inventory: world.register(new ComponentStore<Inventory>('inventory')),
+    structure: world.register(new ComponentStore<Structure>('structure')),
   };
 }
 

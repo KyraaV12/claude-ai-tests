@@ -130,6 +130,7 @@ test('l inspecteur voit toutes les entités d une simulation réelle', () => {
     'body',
     'sprite',
     'controlled',
+    'inventory',
   ]);
 });
 

@@ -63,6 +63,17 @@ export function render(ctx: CanvasRenderingContext2D, scene: Scene): void {
     const radius = body.radius / camera.scale;
 
     ctx.beginPath();
+    if (stores.structure.has(entity)) {
+      // Un carré, pas un disque : bâti et vivant ne doivent pas se confondre.
+      const side = radius * 2;
+      ctx.rect(point.x - radius, point.y - radius, side, side);
+      ctx.fillStyle = `hsl(${sprite.hue} 38% 46%)`;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = `hsl(${sprite.hue} 30% 28%)`;
+      ctx.stroke();
+      continue;
+    }
     ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
     ctx.fillStyle = `hsl(${sprite.hue} 72% 58%)`;
     ctx.fill();
