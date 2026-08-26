@@ -86,7 +86,7 @@ export class Host {
       // constructions et ce qu'il a récolté demeurent — ce sont des entités
       // comme les autres.
       if (this.absent.has(player)) {
-        tick.push({ player, x: 0, y: 0, build: false, harvest: false });
+        tick.push({ player, x: 0, y: 0, build: false, harvest: false, torch: false });
         continue;
       }
 

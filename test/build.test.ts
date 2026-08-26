@@ -4,7 +4,7 @@ import { Simulation, PLAYER } from '../src/core/simulation.ts';
 import type { Tick } from '../src/core/simulation.ts';
 import { Recorder, replay, compare } from '../src/core/replay.ts';
 import { biomeAt, isWater } from '../src/world/terrain.ts';
-import { buildTarget, BUILD_COOLDOWN_STEPS, BUILD_SIZE } from '../src/systems/build.ts';
+import { buildTarget, BUILD_COOLDOWN_STEPS, BUILD_SIZE, BUILD_COST } from '../src/systems/build.ts';
 
 const SEED = 20260826;
 
@@ -14,15 +14,15 @@ function entityOf(simulation: Simulation): number {
   if (entity === null) throw new Error('le joueur local est introuvable');
   return entity;
 }
-const IDLE: Tick = [{ player: PLAYER, x: 0, y: 0, build: false, harvest: false }];
-const BUILD: Tick = [{ player: PLAYER, x: 0, y: 0, build: true, harvest: false }];
+const IDLE: Tick = [{ player: PLAYER, x: 0, y: 0, build: false, harvest: false, torch: false }];
+const BUILD: Tick = [{ player: PLAYER, x: 0, y: 0, build: true, harvest: false, torch: false }];
 
 function structures(simulation: Simulation): number {
   return simulation.stores.structure.size;
 }
 
-function blocs(simulation: Simulation): number {
-  return simulation.stores.inventory.get(entityOf(simulation))!.blocs;
+function pierre(simulation: Simulation): number {
+  return simulation.stores.inventory.get(entityOf(simulation))!.pierre;
 }
 
 /** Avance jusqu'à ce que la pose soit de nouveau permise. */
@@ -32,12 +32,13 @@ function waitCooldown(simulation: Simulation): void {
 
 test('poser crée une entité et consomme un bloc', () => {
   const simulation = new Simulation(SEED);
-  const before = blocs(simulation);
+  const before = pierre(simulation);
 
   simulation.step(BUILD);
 
   assert.equal(structures(simulation), 1);
-  assert.equal(blocs(simulation), before - 1);
+  // Un mur coûte deux pierres, pas une : la recette est une donnée, le test la lit.
+  assert.equal(pierre(simulation), before - BUILD_COST.mur.pierre!);
   assert.equal(simulation.lastBuild?.placed, true);
 });
 
@@ -64,12 +65,12 @@ test('maintenir la touche ne sème pas une construction par pas', () => {
 
 test('le temps d attente écoulé et après s être déplacé, on peut reposer', () => {
   const simulation = new Simulation(SEED);
-  simulation.step([{ player: PLAYER, x: 1, y: 0, build: true, harvest: false }]);
+  simulation.step([{ player: PLAYER, x: 1, y: 0, build: true, harvest: false, torch: false }]);
 
   // Se déplacer est nécessaire : immobile, la seconde pose viserait le même
   // point et se heurterait à la première. C'est le comportement voulu.
-  for (let i = 0; i < 30; i++) simulation.step([{ player: PLAYER, x: 1, y: 0, build: false, harvest: false }]);
-  simulation.step([{ player: PLAYER, x: 1, y: 0, build: true, harvest: false }]);
+  for (let i = 0; i < 30; i++) simulation.step([{ player: PLAYER, x: 1, y: 0, build: false, harvest: false, torch: false }]);
+  simulation.step([{ player: PLAYER, x: 1, y: 0, build: true, harvest: false, torch: false }]);
 
   assert.equal(structures(simulation), 2);
 });
@@ -85,11 +86,11 @@ test('immobile, on ne peut pas empiler au même endroit', () => {
 
 test('la direction du regard décide de l endroit', () => {
   const north = new Simulation(SEED);
-  north.step([{ player: PLAYER, x: 0, y: -1, build: false, harvest: false }]);
+  north.step([{ player: PLAYER, x: 0, y: -1, build: false, harvest: false, torch: false }]);
   const up = buildTarget(north.stores, entityOf(north))!;
 
   const east = new Simulation(SEED);
-  east.step([{ player: PLAYER, x: 1, y: 0, build: false, harvest: false }]);
+  east.step([{ player: PLAYER, x: 1, y: 0, build: false, harvest: false, torch: false }]);
   const right = buildTarget(east.stores, entityOf(east))!;
 
   assert.ok(up.y < north.stores.transform.get(entityOf(north))!.y, 'viser le nord doit poser au nord');
@@ -109,7 +110,7 @@ test('on ne pose pas deux constructions au même endroit', () => {
 
 test('on ne pose rien sans ressource', () => {
   const simulation = new Simulation(SEED);
-  simulation.stores.inventory.get(entityOf(simulation))!.blocs = 0;
+  simulation.stores.inventory.get(entityOf(simulation))!.pierre = 0;
 
   simulation.step(BUILD);
 
@@ -159,16 +160,22 @@ test('les constructions survivent à un aller-retour par instantané', () => {
 test('une session avec constructions se rejoue à l identique', () => {
   // Le vrai test de la tranche : une action discrète, et non plus seulement une
   // direction, doit traverser l'enregistrement sans rien perdre.
+  // La session récolte *et* bâtit : depuis que chaque construction a son coût
+  // en matières, bâtir sans jamais ramasser s'arrête au bout de trois murs, et
+  // le test ne prouvait plus grand-chose. On y pose aussi des torches, pour
+  // que la seconde action discrète traverse l'enregistrement elle aussi.
   const frames: Tick[] = [];
-  for (let i = 0; i < 400; i++) {
+  for (let i = 0; i < 900; i++) {
     const turning = Math.floor(i / 40) % 4;
+    const phase = i % 90;
     frames.push([
       {
         player: PLAYER,
-        x: turning === 0 ? 1 : turning === 2 ? -1 : 0,
-        y: turning === 1 ? 1 : turning === 3 ? -1 : 0,
-        build: i % 15 === 0,
-        harvest: false,
+        x: phase < 45 && turning === 0 ? 1 : phase < 45 && turning === 2 ? -1 : 0,
+        y: phase < 45 && turning === 1 ? 1 : phase < 45 && turning === 3 ? -1 : 0,
+        build: phase >= 70 && phase % 15 === 0,
+        harvest: phase >= 45 && phase < 70,
+        torch: phase === 80,
       },
     ]);
   }
@@ -180,7 +187,9 @@ test('une session avec constructions se rejoue à l identique', () => {
     live.step(frame);
   }
 
-  assert.ok(structures(live) > 3, `trop peu de constructions posées : ${structures(live)}`);
+  assert.ok(structures(live) > 5, `trop peu de constructions posées : ${structures(live)}`);
+  const torches = [...live.stores.structure.entries()].filter(([, s]) => s.kind === 'torche');
+  assert.ok(torches.length > 0, 'aucune torche posée : la seconde action n est pas éprouvée');
 
   const result = compare(live.snapshot(), replay(recorder.finish()));
   assert.ok(result.identical, `divergence en ${result.firstDifference}`);
@@ -191,7 +200,7 @@ test('une construction en moins fait diverger le rejeu', () => {
   // précédent ne prouverait pas grand-chose.
   const frames: Tick[] = [];
   for (let i = 0; i < 120; i++) {
-    frames.push([{ player: PLAYER, x: 1, y: 0, build: i % 15 === 0, harvest: false }]);
+    frames.push([{ player: PLAYER, x: 1, y: 0, build: i % 15 === 0, harvest: false, torch: false }]);
   }
   const players = [PLAYER];
 

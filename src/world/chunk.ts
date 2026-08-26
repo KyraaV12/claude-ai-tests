@@ -1,6 +1,6 @@
 import { createRandom } from '../core/random.ts';
 import { hash2 } from './noise.ts';
-import { biomeAt, isWater } from './terrain.ts';
+import { biomeAt } from './terrain.ts';
 import type { Biome } from './terrain.ts';
 
 /**
@@ -15,7 +15,44 @@ export const CHUNK_SIZE = 320;
 export const TILE_SIZE = 10;
 export const TILES_PER_SIDE = CHUNK_SIZE / TILE_SIZE;
 
-export type PropKind = 'arbre' | 'rocher';
+export type PropKind = 'arbre' | 'rocher' | 'buisson' | 'roseau';
+
+/**
+ * Ce qui pousse dans chaque biome, et en quelle abondance.
+ *
+ * Une table plutôt que des `if` en cascade : ajouter une plante au marais ne
+ * doit pas obliger à relire la boucle de génération. `density` est la chance
+ * qu'un emplacement tiré donne quelque chose ; les poids départagent ensuite.
+ *
+ * Rien ne pousse dans l'eau, et cela ne se déclare pas : l'absence d'entrée
+ * suffit.
+ */
+const FLORA: Partial<Record<Biome, { density: number; kinds: Array<[PropKind, number]> }>> = {
+  sable: { density: 0.35, kinds: [['roseau', 3], ['rocher', 1]] },
+  plaine: { density: 0.5, kinds: [['arbre', 2], ['buisson', 3]] },
+  forêt: { density: 0.92, kinds: [['arbre', 6], ['buisson', 2]] },
+  roche: { density: 0.4, kinds: [['rocher', 5], ['buisson', 1]] },
+  neige: { density: 0.22, kinds: [['rocher', 3], ['arbre', 1]] },
+};
+
+/** Rayon d'un élément, en deux bornes : le tirage se fait entre elles. */
+const PROP_RADIUS: Record<PropKind, [number, number]> = {
+  arbre: [7, 13],
+  rocher: [5, 10],
+  buisson: [4, 7],
+  roseau: [3, 6],
+};
+
+/** Choisit un type parmi des poids, à partir d'un tirage entre 0 et 1. */
+function pickKind(kinds: Array<[PropKind, number]>, roll: number): PropKind {
+  const total = kinds.reduce((sum, [, weight]) => sum + weight, 0);
+  let cursor = roll * total;
+  for (const [kind, weight] of kinds) {
+    cursor -= weight;
+    if (cursor <= 0) return kind;
+  }
+  return kinds[kinds.length - 1]![0];
+}
 
 export interface Prop {
   x: number;
@@ -64,15 +101,17 @@ export function generateChunk(seed: number, cx: number, cy: number): Chunk {
     const x = originX + local() * CHUNK_SIZE;
     const y = originY + local() * CHUNK_SIZE;
     const roll = local();
-    const biome = biomeAt(seed, x, y);
+    const pick = local();
+    const size = local();
+    // Les quatre tirages sont faits quoi qu'il arrive, avant tout refus : le
+    // générateur doit consommer autant de hasard sur un emplacement rejeté que
+    // sur un accepté, sinon changer une densité décalerait tout le reste.
+    const flora = FLORA[biomeAt(seed, x, y)];
+    if (!flora || roll > flora.density) continue;
 
-    // Rien ne pousse dans l'eau, et la densité dit quelque chose du biome.
-    if (isWater(biome)) continue;
-    const density = biome === 'forêt' ? 0.9 : biome === 'plaine' ? 0.35 : biome === 'roche' ? 0.3 : 0.1;
-    if (roll > density) continue;
-
-    const kind: PropKind = biome === 'forêt' || biome === 'plaine' ? 'arbre' : 'rocher';
-    props.push({ x, y, radius: kind === 'arbre' ? 7 + local() * 6 : 5 + local() * 5, kind });
+    const kind = pickKind(flora.kinds, pick);
+    const [min, max] = PROP_RADIUS[kind];
+    props.push({ x, y, radius: min + size * (max - min), kind });
   }
 
   return { cx, cy, biomes, props };

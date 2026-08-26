@@ -37,6 +37,7 @@ export class Recorder {
         y: input.y,
         build: input.build,
         harvest: input.harvest,
+        torch: input.torch,
       })),
     );
   }

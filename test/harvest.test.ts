@@ -14,6 +14,14 @@ import {
   tryHarvest,
 } from '../src/systems/harvest.ts';
 
+import { MATERIALS } from '../src/core/components.ts';
+import type { Inventory } from '../src/core/components.ts';
+
+/** Tout ce que porte une entité, matières confondues. */
+function carried(inventory: Inventory): number {
+  return MATERIALS.reduce((sum, material) => sum + inventory[material], 0);
+}
+
 const SEED = 20260826;
 
 /** L'entité du joueur local. Son identifiant n'est plus 1 : le décor est créé avant. */
@@ -22,8 +30,8 @@ function entityOf(simulation: Simulation): number {
   if (entity === null) throw new Error('le joueur local est introuvable');
   return entity;
 }
-const IDLE: Tick = [{ player: PLAYER, x: 0, y: 0, build: false, harvest: false }];
-const HARVEST: Tick = [{ player: PLAYER, x: 0, y: 0, build: false, harvest: true }];
+const IDLE: Tick = [{ player: PLAYER, x: 0, y: 0, build: false, harvest: false, torch: false }];
+const HARVEST: Tick = [{ player: PLAYER, x: 0, y: 0, build: false, harvest: true, torch: false }];
 
 /** Place le joueur sur un élément de décor et rend ses coordonnées. */
 function standOnAProp(simulation: Simulation): { cx: number; cy: number; index: number } {
@@ -50,15 +58,16 @@ test('la portée tient dans un anneau de morceaux', () => {
 test('récolter enlève l élément et rapporte des blocs', () => {
   const simulation = new Simulation(SEED);
   standOnAProp(simulation);
-  const before = simulation.stores.inventory.get(entityOf(simulation))!.blocs;
+  const before = carried(simulation.stores.inventory.get(entityOf(simulation))!);
 
   simulation.step(HARVEST);
 
   assert.equal(simulation.lastHarvest?.harvested, true);
   assert.equal(simulation.stores.harvested.size, 1);
   const gained = simulation.lastHarvest?.harvested === true ? simulation.lastHarvest.gained : 0;
-  assert.equal(simulation.stores.inventory.get(entityOf(simulation))!.blocs, before + gained);
-  assert.ok(Object.values(YIELD).includes(gained), `gain inattendu : ${gained}`);
+  assert.equal(carried(simulation.stores.inventory.get(entityOf(simulation))!), before + gained);
+  const amounts = Object.values(YIELD).map((y) => y.amount);
+  assert.ok(amounts.includes(gained), `gain inattendu : ${gained}`);
 });
 
 test('le générateur produit toujours l élément récolté', () => {
@@ -173,6 +182,7 @@ test('une session de récolte se rejoue à l identique', () => {
         y: leg === 1 ? 1 : leg === 3 ? -1 : 0,
         build: i % 40 === 0,
         harvest: i % 9 === 0,
+        torch: false,
       },
     ]);
   }
@@ -192,7 +202,7 @@ test('une session de récolte se rejoue à l identique', () => {
 test('une récolte en moins fait diverger le rejeu', () => {
   const frames: Tick[] = [];
   for (let i = 0; i < 200; i++) {
-    frames.push([{ player: PLAYER, x: 1, y: 0, build: false, harvest: i % 9 === 0 }]);
+    frames.push([{ player: PLAYER, x: 1, y: 0, build: false, harvest: i % 9 === 0, torch: false }]);
   }
   const players = [PLAYER];
 
@@ -215,7 +225,7 @@ test('une récolte en moins fait diverger le rejeu', () => {
   const altered = replay({
     seed: SEED,
     players,
-    frames: frames.map((tick, i) => (i === effective ? [{ ...tick[0]!, harvest: false }] : tick)),
+    frames: frames.map((tick, i) => (i === effective ? [{ ...tick[0]!, harvest: false, torch: false }] : tick)),
   });
 
   assert.equal(compare(reference, altered).identical, false);
@@ -226,7 +236,7 @@ test('retirer une demande sans effet ne change rien', () => {
   // non-événement, et le rejeu doit le confirmer.
   const frames: Tick[] = [];
   for (let i = 0; i < 60; i++) {
-    frames.push([{ player: PLAYER, x: 0, y: 0, build: false, harvest: i === 0 || i === 1 }]);
+    frames.push([{ player: PLAYER, x: 0, y: 0, build: false, harvest: i === 0 || i === 1, torch: false }]);
   }
   const players = [PLAYER];
 
@@ -234,7 +244,7 @@ test('retirer une demande sans effet ne change rien', () => {
   const withoutSecond = replay({
     seed: SEED,
     players,
-    frames: frames.map((tick, i) => (i === 1 ? [{ ...tick[0]!, harvest: false }] : tick)),
+    frames: frames.map((tick, i) => (i === 1 ? [{ ...tick[0]!, harvest: false, torch: false }] : tick)),
   });
 
   assert.equal(compare(reference, withoutSecond).identical, true);
@@ -243,11 +253,11 @@ test('retirer une demande sans effet ne change rien', () => {
 test('récolter donne de quoi bâtir', () => {
   // La boucle du jeu : peu de blocs au départ, la récolte les reconstitue.
   const simulation = new Simulation(SEED);
-  const start = simulation.stores.inventory.get(entityOf(simulation))!.blocs;
+  const start = carried(simulation.stores.inventory.get(entityOf(simulation))!);
   assert.ok(start < 20, `le départ doit être maigre, reçu ${start}`);
 
   standOnAProp(simulation);
   simulation.step(HARVEST);
 
-  assert.ok(simulation.stores.inventory.get(entityOf(simulation))!.blocs > start);
+  assert.ok(carried(simulation.stores.inventory.get(entityOf(simulation))!) > start);
 });

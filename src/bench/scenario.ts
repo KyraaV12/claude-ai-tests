@@ -1,6 +1,7 @@
 import { Simulation } from '../core/simulation.ts';
 import type { PlayerId, Tick } from '../core/simulation.ts';
 import { sha256 } from './hash.ts';
+import { vectorLength } from '../core/trig.ts';
 
 /**
  * Un scénario : une graine, des joueurs, une suite d'actions datées.
@@ -12,7 +13,7 @@ import { sha256 } from './hash.ts';
  * d'assertions sur des positions.
  */
 
-export type ActionKind = 'move' | 'harvest' | 'build' | 'idle';
+export type ActionKind = 'move' | 'harvest' | 'build' | 'torch' | 'idle';
 
 export interface ScenarioAction {
   /** Pas auquel l'action commence. */
@@ -74,13 +75,14 @@ export function expand(scenario: Scenario): Tick[] {
       // La dernière action déclarée l'emporte : un scénario qui se contredit
       // doit rester déterministe plutôt que d'échouer sur un détail d'ordre.
       const action = active[active.length - 1];
-      const length = action?.kind === 'move' ? Math.hypot(action.dx ?? 0, action.dy ?? 0) : 0;
+      const length = action?.kind === 'move' ? vectorLength(action.dx ?? 0, action.dy ?? 0) : 0;
       tick.push({
         player,
         x: action?.kind === 'move' && length > 0 ? (action.dx ?? 0) / length : 0,
         y: action?.kind === 'move' && length > 0 ? (action.dy ?? 0) / length : 0,
         build: action?.kind === 'build',
         harvest: action?.kind === 'harvest',
+        torch: action?.kind === 'torch',
       });
     }
     frames.push(tick);
@@ -124,7 +126,7 @@ export function runScenario(scenario: Scenario): ScenarioResult {
   };
 }
 
-/** Le scénario de référence : quatre joueurs, déplacements, récoltes, constructions. */
+/** Le scénario de référence : quatre joueurs, déplacements, récoltes, constructions, torches. */
 export const SCENARIO_018: Scenario = {
   id: 'scenario-018',
   seed: 847291,
@@ -140,12 +142,23 @@ export const SCENARIO_018: Scenario = {
     { atStep: 600, player: 1, kind: 'move', dx: -1, dy: 1, holdSteps: 180 },
     { atStep: 700, player: 3, kind: 'harvest', holdSteps: 100 },
     { atStep: 780, player: 4, kind: 'move', dx: 1, dy: 1, holdSteps: 120 },
+    { atStep: 820, player: 2, kind: 'torch', holdSteps: 40 },
+    { atStep: 860, player: 3, kind: 'torch', holdSteps: 30 },
   ],
-  // Figé le 26 août 2026, mesuré et non deviné. Toute modification du moteur
-  // qui change le monde produit ici un rouge, avec le nombre d'entités pour
-  // dire de quel côté la régression penche. Si le changement est voulu, on
-  // remesure et l'on remplace ces deux lignes — délibérément, jamais par
-  // habitude.
-  expectedHash: '38e4810dd6dd4138661bcb0d720abf789216fd867ec5b99af30f942038780e2d',
-  expectedEntities: 24,
+  // Remesuré le 26 août 2026 pour la tranche « un monde qui vit ». Le garde-fou
+  // a fait exactement son travail : le monde a changé — quatre éléments de décor
+  // au lieu de deux, trois matières au lieu d'une, une action de plus dans la
+  // trame, et une faune qui apparaît d'elle-même — et l'empreinte a rougi au
+  // premier passage. On la remplace *parce qu'on sait pourquoi elle a bougé*,
+  // jamais par habitude. Deux poses de torche ont été ajoutées au scénario pour
+  // que la nouvelle action passe elle aussi sous le garde-fou ; le nombre
+  // d'entités passe de 24 à 49, ce qui est la faune.
+  //
+  // L'empreinte a bougé une seconde fois, et pour une bien meilleure raison :
+  // le banc a découvert qu'elle n'était pas la même en CI et dans le navigateur.
+  // `Math.sin` et `Math.cos` ne sont pas reproductibles d'un moteur à l'autre ;
+  // la simulation passe désormais par `src/core/trig.ts`, et les deux
+  // s'accordent au bit près.
+  expectedHash: 'c6791d02be8c03fb1dab42bfbc89036cfb1db7f06a81a3d80f019d1ca4bd29cb',
+  expectedEntities: 49,
 };

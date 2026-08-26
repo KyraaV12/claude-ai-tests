@@ -10,6 +10,8 @@ import type { BuildOutcome } from '../systems/build.ts';
 import { tickHarvestCooldowns, tryHarvest } from '../systems/harvest.ts';
 import type { HarvestOutcome } from '../systems/harvest.ts';
 import { findSpawn } from '../world/terrain.ts';
+import { repopulate, tickCreatures } from '../systems/creature.ts';
+import { cos, sin } from './trig.ts';
 
 export type PlayerId = number;
 
@@ -25,6 +27,8 @@ export interface InputFrame {
   y: number;
   build: boolean;
   harvest: boolean;
+  /** Poser une torche. Une action distincte de `build` : elle ne coûte pas la même chose. */
+  torch: boolean;
 }
 
 export interface PlayerInput extends InputFrame {
@@ -40,7 +44,7 @@ export const STEP_SECONDS = 1 / STEPS_PER_SECOND;
 export const PLAYER: PlayerId = 1;
 
 export function idleInput(player: PlayerId): PlayerInput {
-  return { player, x: 0, y: 0, build: false, harvest: false };
+  return { player, x: 0, y: 0, build: false, harvest: false, torch: false };
 }
 
 /**
@@ -54,19 +58,34 @@ export function idleInput(player: PlayerId): PlayerInput {
  * Les demandes sont triées par identifiant de joueur avant d'être appliquées :
  * l'ordre d'arrivée des paquets ne doit pas changer le résultat.
  */
+export interface SimulationOptions {
+  /**
+   * Vrai si cette simulation décide des apparitions de créatures.
+   *
+   * L'hôte et une partie solo font autorité ; un client, non. Un client qui
+   * peuplerait le monde de son côté verrait ses bêtes s'évaporer au premier
+   * état reçu — même raison qui lui interdit de rejouer la pose d'un autre.
+   * Ce n'est pas un second chemin de code : c'est un paramètre, comme la liste
+   * des joueurs, et un enregistrement le rejoue tel qu'il a été pris.
+   */
+  authority?: boolean;
+}
+
 export class Simulation {
   readonly world: World;
   readonly stores: Stores;
   readonly seed: number;
   readonly spawn: { x: number; y: number };
+  readonly authority: boolean;
   private steps = 0;
 
   /** Résultats des dernières tentatives, pour l'affichage. Hors état du monde. */
   lastBuild: BuildOutcome | null = null;
   lastHarvest: HarvestOutcome | null = null;
 
-  constructor(seed: number, players: PlayerId[] = [PLAYER]) {
+  constructor(seed: number, players: PlayerId[] = [PLAYER], options: SimulationOptions = {}) {
     this.seed = seed;
+    this.authority = options.authority ?? true;
     this.world = new World();
     this.stores = createStores(this.world);
     this.spawn = findSpawn(seed);
@@ -111,7 +130,7 @@ export class Simulation {
     const entity = this.world.create();
     this.stores.transform.set(
       entity,
-      transformAt(this.spawn.x + Math.cos(angle) * 60, this.spawn.y + Math.sin(angle) * 60),
+      transformAt(this.spawn.x + cos(angle) * 60, this.spawn.y + sin(angle) * 60),
     );
     this.stores.velocity.set(entity, { x: 0, y: 0 });
     this.stores.body.set(entity, { radius: 16, mass: 4 });
@@ -126,7 +145,10 @@ export class Simulation {
       buildCooldown: 0,
       harvestCooldown: 0,
     });
-    this.stores.inventory.set(entity, { blocs: 8 });
+    // De quoi bâtir un peu et s'éclairer une fois. Au-delà, il faut récolter —
+    // et récolter oblige à traverser des biomes différents, puisque chacun ne
+    // donne pas la même matière.
+    this.stores.inventory.set(entity, { bois: 4, pierre: 6, fibre: 2 });
     return entity;
   }
 
@@ -147,12 +169,24 @@ export class Simulation {
 
       applyControl(this.stores, entity, input, STEP_SECONDS);
       if (input.harvest) this.lastHarvest = tryHarvest(this.world, this.stores, this.seed, entity);
+      // Le mur d'abord : les deux partagent le même temps d'attente, donc
+      // demander les deux au même pas n'en pose qu'un. L'ordre doit être fixe,
+      // sinon deux pairs poseraient des choses différentes.
       if (input.build) this.lastBuild = tryBuild(this.world, this.stores, this.seed, entity, this.steps);
+      else if (input.torch) {
+        this.lastBuild = tryBuild(this.world, this.stores, this.seed, entity, this.steps, 'torche');
+      }
     }
+
+    // Les créatures décident après les joueurs : elles réagissent à la position
+    // du pas précédent, jamais à moitié de celle du pas courant.
+    tickCreatures(this.stores, this.seed, this.steps);
 
     integrate(this.stores, STEP_SECONDS);
     resolveCollisions(this.stores);
     this.steps++;
+
+    if (this.authority) repopulate(this.world, this.stores, this.seed, this.steps);
   }
 
   snapshot(): Snapshot {

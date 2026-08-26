@@ -1,5 +1,6 @@
 import type { Entity } from '../core/world.ts';
 import type { Stores, Transform, Velocity, Body } from '../core/components.ts';
+import { vectorLength } from '../core/trig.ts';
 
 /**
  * Collisions entre disques.
@@ -53,7 +54,7 @@ export function resolveCollisions(stores: Stores): void {
       const dx = b.transform.x - a.transform.x;
       const dy = b.transform.y - a.transform.y;
 
-      const distance = Math.hypot(dx, dy);
+      const distance = vectorLength(dx, dy);
       const contact = a.body.radius + b.body.radius;
       if (distance >= contact) continue;
 
