@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Simulation, WORLD_BOUNDS } from '../src/core/simulation.ts';
+import { Simulation } from '../src/core/simulation.ts';
 import type { InputFrame } from '../src/core/simulation.ts';
 import { Recorder, replay, compare } from '../src/core/replay.ts';
 import { createRandom } from '../src/core/random.ts';
@@ -25,8 +25,8 @@ function scriptedInputs(count: number): InputFrame[] {
 test('deux simulations aux mêmes entrées finissent dans le même état', () => {
   const frames = scriptedInputs(600);
 
-  const a = new Simulation(SEED, WORLD_BOUNDS);
-  const b = new Simulation(SEED, WORLD_BOUNDS);
+  const a = new Simulation(SEED);
+  const b = new Simulation(SEED);
   for (const frame of frames) a.step(frame);
   for (const frame of frames) b.step(frame);
 
@@ -35,8 +35,8 @@ test('deux simulations aux mêmes entrées finissent dans le même état', () =>
 
 test('des graines différentes produisent des mondes différents', () => {
   const frames = scriptedInputs(60);
-  const a = new Simulation(SEED, WORLD_BOUNDS);
-  const b = new Simulation(SEED + 1, WORLD_BOUNDS);
+  const a = new Simulation(SEED);
+  const b = new Simulation(SEED + 1);
   for (const frame of frames) a.step(frame);
   for (const frame of frames) b.step(frame);
 
@@ -46,14 +46,14 @@ test('des graines différentes produisent des mondes différents', () => {
 test('rejouer un enregistrement redonne l état de la session enregistrée', () => {
   const frames = scriptedInputs(600);
 
-  const live = new Simulation(SEED, WORLD_BOUNDS);
+  const live = new Simulation(SEED);
   const recorder = new Recorder(SEED);
   for (const frame of frames) {
     recorder.capture(frame);
     live.step(frame);
   }
 
-  const result = compare(live.snapshot(), replay(recorder.finish(), WORLD_BOUNDS));
+  const result = compare(live.snapshot(), replay(recorder.finish()));
   assert.ok(result.identical, `divergence en ${result.firstDifference}`);
 });
 
@@ -69,7 +69,7 @@ test('l enregistrement copie les entrées au lieu de les référencer', () => {
 test('un enregistrement pèse bien moins qu une suite d instantanés', () => {
   const frames = scriptedInputs(600);
   const recorder = new Recorder(SEED);
-  const simulation = new Simulation(SEED, WORLD_BOUNDS);
+  const simulation = new Simulation(SEED);
   for (const frame of frames) {
     recorder.capture(frame);
     simulation.step(frame);
@@ -86,8 +86,8 @@ test('un enregistrement pèse bien moins qu une suite d instantanés', () => {
 });
 
 test('compare situe le premier écart au lieu de dire seulement « différent »', () => {
-  const a = new Simulation(SEED, WORLD_BOUNDS);
-  const b = new Simulation(SEED, WORLD_BOUNDS);
+  const a = new Simulation(SEED);
+  const b = new Simulation(SEED);
   b.stores.transform.get(3)!.x += 0.5;
 
   const result = compare(a.snapshot(), b.snapshot());
@@ -98,8 +98,8 @@ test('compare situe le premier écart au lieu de dire seulement « différent »
 });
 
 test('compare reconnaît deux états identiques', () => {
-  const a = new Simulation(SEED, WORLD_BOUNDS);
-  const b = new Simulation(SEED, WORLD_BOUNDS);
+  const a = new Simulation(SEED);
+  const b = new Simulation(SEED);
   const result = compare(a.snapshot(), b.snapshot());
 
   assert.equal(result.identical, true);
@@ -107,7 +107,7 @@ test('compare reconnaît deux états identiques', () => {
 });
 
 test('le temps logique ne dépend que du nombre de pas', () => {
-  const simulation = new Simulation(SEED, WORLD_BOUNDS);
+  const simulation = new Simulation(SEED);
   for (let i = 0; i < 90; i++) simulation.step({ x: 0, y: 0 });
 
   assert.equal(simulation.stepCount, 90);

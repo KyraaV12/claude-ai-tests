@@ -1,7 +1,5 @@
 import type { Entity } from '../core/world.ts';
 import type { Stores, Transform, Velocity, Body } from '../core/components.ts';
-import type { Bounds } from './movement.ts';
-import { shortestDelta } from './movement.ts';
 
 /**
  * Collisions entre disques.
@@ -14,6 +12,9 @@ import { shortestDelta } from './movement.ts';
  * L'ordre de parcours suit l'ordre d'insertion des composants, identique d'une
  * exécution à l'autre : deux simulations aux mêmes entrées résolvent les mêmes
  * collisions dans le même ordre, et finissent dans le même état.
+ *
+ * Le monde étant ouvert, l'écart entre deux corps est l'écart direct : plus de
+ * bord par lequel deux points éloignés seraient voisins.
  */
 
 interface Colliding {
@@ -41,7 +42,7 @@ function gather(stores: Stores): Colliding[] {
  * cessé d'être symétrique, et une simulation qui perd de l'énergie ne se
  * réplique pas.
  */
-export function resolveCollisions(stores: Stores, bounds: Bounds): void {
+export function resolveCollisions(stores: Stores): void {
   const bodies = gather(stores);
 
   for (let i = 0; i < bodies.length; i++) {
@@ -49,10 +50,8 @@ export function resolveCollisions(stores: Stores, bounds: Bounds): void {
       const a = bodies[i]!;
       const b = bodies[j]!;
 
-      // Le monde se replie sur lui-même : deux corps de part et d'autre d'un
-      // bord sont voisins, et l'écart le plus court peut passer par le bord.
-      const dx = shortestDelta(b.transform.x - a.transform.x, bounds.width);
-      const dy = shortestDelta(b.transform.y - a.transform.y, bounds.height);
+      const dx = b.transform.x - a.transform.x;
+      const dy = b.transform.y - a.transform.y;
 
       const distance = Math.hypot(dx, dy);
       const contact = a.body.radius + b.body.radius;

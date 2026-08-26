@@ -1,8 +1,6 @@
 import type { Entity, World } from '../core/world.ts';
 import { ComponentStore } from '../core/world.ts';
 import type { Stores } from '../core/components.ts';
-import type { Bounds } from '../systems/movement.ts';
-import { shortestDelta } from '../systems/movement.ts';
 
 /**
  * La logique de l'inspecteur, sans DOM.
@@ -112,27 +110,13 @@ export function setField(
   return true;
 }
 
-/**
- * L'entité la plus proche d'un point, ou `null` si aucune n'est assez près.
- *
- * La distance passe par le bord quand c'est plus court : cliquer près d'une
- * bordure doit désigner ce qu'on voit, pas ce qui se trouve à l'autre bout des
- * coordonnées.
- */
-export function findNearest(
-  stores: Stores,
-  x: number,
-  y: number,
-  bounds: Bounds,
-  tolerance = 24,
-): Entity | null {
+/** L'entité la plus proche d'un point du monde, ou `null` si aucune n'est assez près. */
+export function findNearest(stores: Stores, x: number, y: number, tolerance = 24): Entity | null {
   let best: Entity | null = null;
   let bestDistance = Number.POSITIVE_INFINITY;
 
   for (const [entity, transform] of stores.transform.entries()) {
-    const dx = shortestDelta(transform.x - x, bounds.width);
-    const dy = shortestDelta(transform.y - y, bounds.height);
-    const distance = Math.hypot(dx, dy);
+    const distance = Math.hypot(transform.x - x, transform.y - y);
 
     // Le rayon du corps élargit la cible : on vise ce qu'on voit, pas un centre.
     const reach = (stores.body.get(entity)?.radius ?? 0) + tolerance;
@@ -142,20 +126,4 @@ export function findNearest(
     }
   }
   return best;
-}
-
-/** Convertit un point du canevas en coordonnées du monde, mise à l'échelle comprise. */
-export function toWorldPoint(
-  clientX: number,
-  clientY: number,
-  rect: { left: number; top: number; width: number; height: number },
-  bounds: Bounds,
-): { x: number; y: number } {
-  const scale = Math.min(rect.width / bounds.width, rect.height / bounds.height);
-  const offsetX = (rect.width - bounds.width * scale) / 2;
-  const offsetY = (rect.height - bounds.height * scale) / 2;
-  return {
-    x: (clientX - rect.left - offsetX) / scale,
-    y: (clientY - rect.top - offsetY) / scale,
-  };
 }

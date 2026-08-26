@@ -1,12 +1,13 @@
 # claude-ai-tests
 
-Bac à sable pour un moteur de jeu en TypeScript, servi dans le navigateur.
+Moteur de jeu monde ouvert procédural, en TypeScript, servi dans le navigateur.
 
 ## Ce que contient le dépôt
 
 | Chemin | Rôle |
 | --- | --- |
 | `src/core/` | Boucle à pas fixe, monde entité/composant, sérialisation, aléatoire à graine, pas de simulation, enregistrement et rejeu |
+| `src/world/` | Bruit, terrain, découpage en morceaux, caméra |
 | `src/systems/` | Saisie clavier, déplacement, collisions, rendu canvas |
 | `src/tools/` | Inspecteur : logique sans DOM (`inspect.ts`) et panneau (`panel.ts`) |
 | `web/` | Pages statiques : le banc d'essai à la racine, la tranche T0 sous `game/` |
@@ -39,6 +40,25 @@ Une partie tient dans une graine et la suite des entrées, pas par pas (`Recordi
 Dans la page, <kbd>R</kbd> enregistre puis rejoue et compare. Une session d'une centaine de pas pèse environ 1,5 ko d'entrées, là où la suite des instantanés correspondants en pèserait des centaines de kilo-octets.
 
 C'est la brique commune à trois choses à venir : sauvegardes comparables, reproduction d'un bug à partir d'un enregistrement, et réconciliation réseau.
+
+## Le monde ouvert
+
+**Les entités sont l'état ; le décor est dérivé.** C'est la distinction qui rend un monde infini tenable.
+
+| | Entités | Terrain |
+| --- | --- | --- |
+| Stocké | oui | non |
+| Sauvegardé | oui | non |
+| Répliqué (à venir) | oui | non |
+| Reconstruction | depuis l'instantané | depuis la graine et le point |
+
+`elevationAt(seed, x, y)` répond la même chose au premier comme au millionième appel. Un morceau de 320 unités n'est donc pas une donnée du jeu : c'est le cache d'une fonction. `ChunkCache` en garde un nombre borné et jette les plus anciens ; un morceau évincé revient identique, et un test le vérifie.
+
+Le bruit est échantillonné **en espace monde**, jamais par morceau : c'est ce qui interdit toute couture aux frontières. Un bruit tiré par morceau produirait un bord visible à chaque jointure.
+
+Le point de départ est cherché en spirale depuis l'origine jusqu'à la terre ferme — selon la graine, l'origine est noyée une fois sur trois.
+
+La caméra appartient à l'affichage, jamais à la simulation : elle est lissée avec le temps réel, donc non déterministe, et c'est sans conséquence puisque aucun système ne la lit. La faire entrer dans `Simulation.step()` casserait le rejeu.
 
 ## Inspecter
 
