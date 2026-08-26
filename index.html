@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Banc d'essai</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400..600&display=swap">
+<style>
+  :root{
+    color-scheme: light dark;
+    --paper:#EBEEF3;
+    --surface:#F9FAFC;
+    --ink:#0F141C;
+    --muted:#596373;
+    --line:#D2D9E3;
+    --line-strong:#B7C1CE;
+    --accent:#22409E;
+    --accent-soft:#E2E8F8;
+    --live:#0F7A57;
+    --wait:#8A6A17;
+    --grid:#C6D0DE;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#0B0F16;
+      --surface:#131A25;
+      --ink:#E6EBF3;
+      --muted:#909CAF;
+      --line:#212A38;
+      --line-strong:#2F3A4A;
+      --accent:#94ACFF;
+      --accent-soft:#1A2440;
+      --live:#4CC79A;
+      --wait:#D6A94A;
+      --grid:#243040;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0B0F16;
+    --surface:#131A25;
+    --ink:#E6EBF3;
+    --muted:#909CAF;
+    --line:#212A38;
+    --line-strong:#2F3A4A;
+    --accent:#94ACFF;
+    --accent-soft:#1A2440;
+    --live:#4CC79A;
+    --wait:#D6A94A;
+    --grid:#243040;
+  }
+
+  *{ box-sizing:border-box; }
+  html{ -webkit-text-size-adjust:100%; }
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size:1.0625rem;
+    line-height:1.65;
+    font-optical-sizing:auto;
+  }
+  ::selection{ background:var(--accent-soft); color:var(--ink); }
+  a{ color:var(--accent); text-underline-offset:.18em; text-decoration-thickness:.06em; }
+  a:focus-visible, button:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; border-radius:2px; }
+
+  .page{ max-width:60rem; margin-inline:auto; padding:clamp(2rem,5vw,4rem) clamp(1.25rem,4vw,2.5rem) 4.5rem; }
+
+  .eyebrow{
+    font-family:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size:.75rem; font-weight:500; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--muted); margin:0 0 1.4rem;
+  }
+  h1{
+    font-family:Archivo, "Helvetica Neue", Arial, sans-serif;
+    font-weight:700; letter-spacing:-.035em; line-height:1.02;
+    font-size:clamp(2.6rem,8vw,4.25rem);
+    text-wrap:balance; margin:0;
+  }
+  .lede{ max-width:56ch; margin:1.1rem 0 0; font-size:1.15rem; color:var(--muted); }
+
+  .scope{
+    margin-top:2.25rem;
+    border:1px solid var(--line);
+    background:var(--surface);
+    border-radius:3px;
+    overflow:hidden;
+  }
+  .scope canvas{ display:block; width:100%; height:104px; }
+
+  .band{
+    display:grid;
+    grid-template-columns:8rem minmax(0,1fr);
+    gap:0 2.5rem;
+    border-top:1px solid var(--line);
+    margin-top:3rem;
+    padding-top:2rem;
+  }
+  .rail{
+    font-family:"IBM Plex Mono", ui-monospace, monospace;
+    font-size:.72rem; font-weight:500; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--muted); margin:.35rem 0 0;
+  }
+  .prose{ max-width:62ch; }
+  .prose > :first-child{ margin-top:0; }
+  h2{
+    font-family:Archivo, "Helvetica Neue", Arial, sans-serif;
+    font-weight:600; letter-spacing:-.02em; font-size:1.45rem; line-height:1.2;
+    margin:0 0 .9rem; text-wrap:balance;
+  }
+  p{ margin:0 0 1rem; }
+  .prose p:last-child{ margin-bottom:0; }
+  code{
+    font-family:"IBM Plex Mono", ui-monospace, monospace;
+    font-size:.85em; background:var(--accent-soft); color:var(--ink);
+    padding:.1em .3em; border-radius:3px;
+  }
+
+  .checks{
+    display:grid; gap:1px;
+    background:var(--line);
+    border:1px solid var(--line);
+    border-radius:3px; overflow:hidden;
+    margin:0 0 1.25rem;
+  }
+  .check{
+    display:grid; grid-template-columns:.6rem 1fr auto;
+    align-items:center; gap:.85rem;
+    background:var(--surface); padding:.72rem .95rem;
+  }
+  .dot{
+    width:.6rem; height:.6rem; border-radius:50%;
+    background:var(--wait); transition:background .25s ease;
+  }
+  @media (prefers-reduced-motion:reduce){ .dot{ transition:none; } }
+  .check[data-state="ok"] .dot{ background:var(--live); }
+  .check .name{ font-size:.98rem; }
+  .check .val{
+    font-family:"IBM Plex Mono", ui-monospace, monospace;
+    font-size:.78rem; color:var(--muted);
+    font-variant-numeric:tabular-nums; text-align:right;
+  }
+
+  .steps{ margin:0; padding:0; list-style:none; display:grid; gap:.85rem; }
+  .steps li{ display:grid; grid-template-columns:5.5rem 1fr; gap:.9rem; align-items:baseline; }
+  .steps .mark{
+    font-family:"IBM Plex Mono", ui-monospace, monospace;
+    font-size:.72rem; font-weight:500; color:var(--accent);
+    letter-spacing:.12em; text-transform:uppercase;
+  }
+  @media (max-width:34rem){
+    .steps li{ grid-template-columns:1fr; gap:.15rem; }
+  }
+
+  footer{
+    border-top:1px solid var(--line);
+    margin-top:3rem; padding-top:1.5rem;
+    font-family:"IBM Plex Mono", ui-monospace, monospace;
+    font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
+    display:flex; flex-wrap:wrap; gap:.6rem 1.5rem; justify-content:space-between;
+  }
+
+  @media (max-width:46rem){
+    .band{ grid-template-columns:1fr; gap:.6rem; }
+    .rail{ margin-top:0; }
+    .check{ grid-template-columns:.6rem 1fr; row-gap:.15rem; }
+    .check .val{ grid-column:2; text-align:left; }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+
+  <header>
+    <p class="eyebrow">kyraav12 / claude-ai-tests</p>
+    <h1>Banc d'essai</h1>
+    <p class="lede">Une page servie depuis ce dépôt. Elle ne décrit pas ce qu'elle sait faire&nbsp;: elle le mesure, ici même, au moment où vous la lisez.</p>
+    <div class="scope"><canvas id="trace" aria-hidden="true"></canvas></div>
+  </header>
+
+  <section class="band">
+    <p class="rail">État</p>
+    <div class="prose">
+      <h2>Ce qui répond</h2>
+      <div class="checks" id="checks">
+        <div class="check" data-state="ok" data-check="html">
+          <span class="dot"></span><span class="name">Structure HTML</span><span class="val">analysée</span>
+        </div>
+        <div class="check" data-check="css">
+          <span class="dot"></span><span class="name">Feuille de style</span><span class="val">vérification…</span>
+        </div>
+        <div class="check" data-check="js">
+          <span class="dot"></span><span class="name">JavaScript</span><span class="val">inactif</span>
+        </div>
+        <div class="check" data-check="fonts">
+          <span class="dot"></span><span class="name">Polices web</span><span class="val">chargement…</span>
+        </div>
+        <div class="check" data-check="theme">
+          <span class="dot"></span><span class="name">Thème du lecteur</span><span class="val">—</span>
+        </div>
+        <div class="check" data-check="viewport">
+          <span class="dot"></span><span class="name">Fenêtre</span><span class="val">—</span>
+        </div>
+      </div>
+      <p>Un point vert signifie que le navigateur a réellement exécuté la chose, pas qu'elle figure dans le fichier. Redimensionnez la fenêtre&nbsp;: la dernière ligne suit.</p>
+    </div>
+  </section>
+
+  <section class="band">
+    <p class="rail">Contenu</p>
+    <div class="prose">
+      <h2>Ce que contient la page</h2>
+      <p>Un seul fichier, <code>index.html</code>, sans dépendance à installer&nbsp;: styles et script sont en ligne, les trois polices viennent de Google Fonts avec une pile de secours déclarée. La page suit le thème clair ou sombre de votre système, et le tracé de l'en-tête s'immobilise si vous avez demandé moins d'animations.</p>
+      <p>Rien d'autre n'est nécessaire pour l'ouvrir&nbsp;: un double-clic sur le fichier suffit.</p>
+    </div>
+  </section>
+
+  <section class="band">
+    <p class="rail">Suite</p>
+    <div class="prose">
+      <h2>Pour la servir</h2>
+      <ul class="steps">
+        <li><span class="mark">Local</span><span><code>python3 -m http.server 8000</code> à la racine du dépôt, puis <code>localhost:8000</code>.</span></li>
+        <li><span class="mark">En ligne</span><span>Activez GitHub Pages sur la branche de votre choix&nbsp;: la racine contient déjà <code>index.html</code>.</span></li>
+        <li><span class="mark">Ensuite</span><span>Dites-moi ce que la page doit faire, et je pars de cette base plutôt que d'une page blanche.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    <span>Banc d'essai</span>
+    <span id="stamp">rendu —</span>
+  </footer>
+
+</main>
+
+<script>
+(function () {
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function set(name, value, ok) {
+    var row = document.querySelector('[data-check="' + name + '"]');
+    if (!row) return;
+    row.querySelector(".val").textContent = value;
+    if (ok) row.setAttribute("data-state", "ok");
+  }
+
+  // CSS : le jeton a-t-il bien été résolu par le moteur de style ?
+  var token = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+  set("css", token ? "jetons résolus" : "non appliquée", !!token);
+
+  // JavaScript : si cette ligne s'exécute, la réponse est oui.
+  set("js", "exécuté", true);
+
+  // Thème réellement appliqué chez le lecteur.
+  var dark = window.matchMedia("(prefers-color-scheme: dark)");
+  function theme() {
+    var forced = document.documentElement.getAttribute("data-theme");
+    set("theme", forced ? forced + " (imposé)" : (dark.matches ? "sombre" : "clair"), true);
+  }
+  theme();
+  dark.addEventListener("change", theme);
+
+  // Taille de fenêtre, tenue à jour.
+  function viewport() {
+    set("viewport", window.innerWidth + " × " + window.innerHeight + " px", true);
+  }
+  viewport();
+  window.addEventListener("resize", viewport, { passive: true });
+
+  // Polices : chargées pour de bon, ou repli silencieux ?
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () {
+      // document.fonts.check() dit « oui » même pour une famille absente :
+      // on inspecte les faces réellement chargées.
+      var wanted = ["Archivo", "IBM Plex Mono", "Source Serif 4"];
+      var seen = {};
+      document.fonts.forEach(function (face) {
+        if (face.status === "loaded") seen[face.family.replace(/^['"]|['"]$/g, "")] = true;
+      });
+      var n = wanted.filter(function (f) { return seen[f]; }).length;
+      set("fonts", n === 3 ? "3 familles actives" : (n ? n + " familles sur 3" : "repli système"), n === 3);
+    });
+  } else {
+    set("fonts", "non mesurable", false);
+  }
+
+  // Horodatage du rendu.
+  var stamp = document.getElementById("stamp");
+  if (stamp) {
+    stamp.textContent = "rendu " + new Date().toLocaleString("fr-FR", {
+      day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
+    });
+  }
+
+  // Tracé de l'en-tête : grille + signal composite.
+  var canvas = document.getElementById("trace");
+  if (!canvas || !canvas.getContext) return;
+  var ctx = canvas.getContext("2d");
+  var w = 0, h = 0, dpr = 1;
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var rect = canvas.getBoundingClientRect();
+    w = Math.max(rect.width, 1);
+    h = Math.max(rect.height, 1);
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function draw(phase) {
+    var css = getComputedStyle(document.documentElement);
+    var grid = css.getPropertyValue("--grid").trim() || "#ccc";
+    var accent = css.getPropertyValue("--accent").trim() || "#333";
+
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.strokeStyle = grid;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (var x = 0; x <= w; x += 28) { ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, h); }
+    for (var y = h / 2 % 26; y <= h; y += 26) { ctx.moveTo(0, y + 0.5); ctx.lineTo(w, y + 0.5); }
+    ctx.stroke();
+
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.75;
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    for (var i = 0; i <= w; i++) {
+      var t = i / w * Math.PI * 2;
+      var v = Math.sin(t * 2 + phase) * 0.62
+            + Math.sin(t * 5 + phase * 1.7) * 0.22
+            + Math.sin(t * 11 + phase * 0.4) * 0.08;
+      var py = h / 2 - v * (h / 2 - 12);
+      if (i === 0) ctx.moveTo(i, py); else ctx.lineTo(i, py);
+    }
+    ctx.stroke();
+  }
+
+  var last = 0;
+  resize();
+  draw(last);
+  window.addEventListener("resize", function () { resize(); draw(last); }, { passive: true });
+
+  if (!reduce) {
+    var start = performance.now();
+    (function frame(now) {
+      last = (now - start) / 2600;
+      draw(last);
+      requestAnimationFrame(frame);
+    })(start);
+  }
+})();
+</script>
+</body>
+</html>
