@@ -1,22 +1,48 @@
-name: Déployer sur GitHub Pages
+name: Vérifier et déployer
 
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
-  deploy:
+  # Tourne sur chaque pull request : le signal arrive avant la fusion, pas après.
+  check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Types, tests, construction
+        run: npm run check
+
+  deploy:
+    # Rien n'est publié tant que les types et les tests ne passent pas : le site
+    # en ligne ne peut pas être en avance sur ce qui a été vérifié.
+    needs: check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    # Sérialise les déploiements sans couper celui qui est en cours. Portée au
+    # job seul : deux vérifications de PR n'ont aucune raison de s'attendre.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -24,10 +50,22 @@ jobs:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
+      - name: Installer Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Construire le site
+        run: npm run build
+
       - name: Empaqueter le site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: dist
 
       - name: Déployer
         id: deployment
