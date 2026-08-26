@@ -8,6 +8,7 @@ Moteur de jeu monde ouvert procédural, en TypeScript, servi dans le navigateur.
 | --- | --- |
 | `src/core/` | Boucle à pas fixe, monde entité/composant, sérialisation, aléatoire à graine, pas de simulation, enregistrement et rejeu |
 | `src/world/` | Bruit, terrain, découpage en morceaux, caméra |
+| `src/net/` | Transport, protocole, hôte faisant autorité, client prédictif |
 | `src/systems/` | Saisie clavier, déplacement, collisions, rendu canvas |
 | `src/tools/` | Inspecteur : logique sans DOM (`inspect.ts`) et panneau (`panel.ts`) |
 | `web/` | Pages statiques : le banc d'essai à la racine, la tranche T0 sous `game/` |
@@ -59,6 +60,26 @@ Le bruit est échantillonné **en espace monde**, jamais par morceau : c'est ce 
 Le point de départ est cherché en spirale depuis l'origine jusqu'à la terre ferme — selon la graine, l'origine est noyée une fois sur trois.
 
 La caméra appartient à l'affichage, jamais à la simulation : elle est lissée avec le temps réel, donc non déterministe, et c'est sans conséquence puisque aucun système ne la lit. La faire entrer dans `Simulation.step()` casserait le rejeu.
+
+## Le réseau
+
+L'hôte fait autorité : il exécute la simulation, les clients lui envoient leurs demandes et reçoivent son état. Un client **prédit** immédiatement ses propres demandes, puis, quand l'état d'autorité arrive, il le reprend et **rejoue** celles que l'hôte n'a pas encore confirmées.
+
+Trois points portent tout le reste :
+
+**Les demandes sont appliquées au pas qu'elles portent**, jamais à celui où le paquet arrive. Sinon la chronologie de l'hôte serait décalée de celle du client et aucune prédiction ne tomberait juste.
+
+**Le client garde une avance** sur le dernier état reçu. Sans elle, ses demandes arrivent datées d'un pas déjà joué et sont rejetées. L'avance est constante ici ; l'estimer d'après la latence est l'étape suivante et n'est pas faite.
+
+**Les demandes d'un pas sont triées par joueur** avant d'être appliquées. L'ordre d'arrivée des paquets ne doit pas changer le résultat.
+
+Ce qui se mesure : un client ne se voit **jamais** corrigé, quelle que soit la latence — il connaît ses propres demandes. Il ne peut pas deviner celles des autres, qui sont extrapolés puis rattrapés ; c'est normal et compté séparément.
+
+**Le terrain ne circule jamais.** Seules les entités sont transmises, chaque pair recalcule le monde depuis la graine. C'est ce que la frontière de T3 achète ici, et un test le vérifie.
+
+### Ce que le transport est, et n'est pas
+
+`BroadcastChannel` relie deux onglets du même navigateur. **Ce n'est pas du multijoueur par Internet** — c'est un banc d'essai du netcode sur un site statique, où aucun serveur ne peut vivre. Le netcode passe par une interface `Transport` : un WebSocket ou un WebRTC s'y substitue sans toucher au reste. `MemoryNetwork` en est la troisième implémentation, avec une latence qu'on avance à la main — c'est elle qui rend le netcode testable sans navigateur.
 
 ## Récolter
 

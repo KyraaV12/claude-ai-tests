@@ -1,5 +1,5 @@
 import { Simulation } from './simulation.ts';
-import type { InputFrame } from './simulation.ts';
+import type { PlayerId, Tick } from './simulation.ts';
 import type { Snapshot } from './world.ts';
 
 /**
@@ -12,20 +12,33 @@ import type { Snapshot } from './world.ts';
  */
 export interface Recording {
   seed: number;
-  frames: InputFrame[];
+  /** Les joueurs présents, dans l'ordre où ils sont entrés. */
+  players: PlayerId[];
+  /** Une entrée par pas : les demandes de tous les joueurs pour ce pas. */
+  frames: Tick[];
 }
 
 export class Recorder {
   readonly seed: number;
-  private readonly frames: InputFrame[] = [];
+  readonly players: PlayerId[];
+  private readonly frames: Tick[] = [];
 
-  constructor(seed: number) {
+  constructor(seed: number, players: PlayerId[]) {
     this.seed = seed;
+    this.players = [...players];
   }
 
-  /** Copie l'entrée du pas : la garder par référence la ferait muter sous nos pieds. */
-  capture(input: InputFrame): void {
-    this.frames.push({ x: input.x, y: input.y, build: input.build, harvest: input.harvest });
+  /** Copie les demandes du pas : les garder par référence les ferait muter sous nos pieds. */
+  capture(tick: Tick): void {
+    this.frames.push(
+      tick.map((input) => ({
+        player: input.player,
+        x: input.x,
+        y: input.y,
+        build: input.build,
+        harvest: input.harvest,
+      })),
+    );
   }
 
   get frameCount(): number {
@@ -33,13 +46,13 @@ export class Recorder {
   }
 
   finish(): Recording {
-    return { seed: this.seed, frames: [...this.frames] };
+    return { seed: this.seed, players: [...this.players], frames: [...this.frames] };
   }
 }
 
 /** Rejoue un enregistrement depuis un monde neuf et rend l'état final. */
 export function replay(recording: Recording): Snapshot {
-  const simulation = new Simulation(recording.seed);
+  const simulation = new Simulation(recording.seed, recording.players);
   for (const frame of recording.frames) simulation.step(frame);
   return simulation.snapshot();
 }

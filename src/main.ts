@@ -12,6 +12,9 @@ import { ChunkCache, CHUNK_SIZE, chunkCoordOf } from './world/chunk.ts';
 import { TerrainPainter } from './systems/terrain-painter.ts';
 import { createCamera, follow, screenToWorld } from './world/camera.ts';
 import { biomeAt } from './world/terrain.ts';
+import { ChannelTransport } from './net/channel-transport.ts';
+import { Host } from './net/host.ts';
+import { Client } from './net/client.ts';
 
 const SEED = 20260826;
 
@@ -26,7 +29,21 @@ if (!canvas || !overlay || !verdict || !inspectorHost) {
 const ctx = canvas.getContext('2d');
 if (!ctx) throw new Error('Canvas 2D indisponible dans ce navigateur');
 
-let simulation = new Simulation(SEED);
+/**
+ * Le pair local : hôte ou client, décidé au chargement.
+ *
+ * L'identifiant de joueur est tiré au sort ici, hors simulation — il désigne
+ * une connexion, pas un état du monde. Il entre ensuite dans la simulation par
+ * `addPlayer`, qui en dérive une position de départ : la reproductibilité tient
+ * donc à la suite des identifiants, pas au hasard.
+ */
+type Role = 'solo' | 'hôte' | 'client';
+let role: Role = 'solo';
+let host: Host | null = null;
+let client: Client | null = null;
+const localPlayer = 1 + Math.floor(Math.random() * 1_000_000);
+
+let simulation = new Simulation(SEED, [PLAYER]);
 let recorder: Recorder | null = null;
 let lastRecording: Recording | null = null;
 let saved: Snapshot | null = null;
@@ -68,9 +85,28 @@ function setVerdict(text: string, tone: 'neutre' | 'ok' | 'alerte'): void {
   verdict!.dataset['tone'] = tone;
 }
 
+function activePlayer(): number {
+  return role === 'solo' ? PLAYER : localPlayer;
+}
+
+function playerEntity(): number | null {
+  return simulation.entityOf(activePlayer());
+}
+
 function playerPosition(): { x: number; y: number } {
-  const transform = simulation.stores.transform.get(PLAYER);
+  const entity = playerEntity();
+  const transform = entity === null ? undefined : simulation.stores.transform.get(entity);
   return transform ? { x: transform.x, y: transform.y } : simulation.spawn;
+}
+
+function inventoryOfPlayer() {
+  const entity = playerEntity();
+  return entity === null ? undefined : simulation.stores.inventory.get(entity);
+}
+
+function controlOfPlayer() {
+  const entity = playerEntity();
+  return entity === null ? undefined : simulation.stores.controlled.get(entity);
 }
 
 /**
@@ -80,11 +116,11 @@ function playerPosition(): { x: number; y: number } {
  * plus récent qui intéresse, et gagner du bois répond souvent au refus.
  */
 function actionStatus(): string {
-  const blocs = simulation.stores.inventory.get(PLAYER)?.blocs ?? 0;
+  const blocs = inventoryOfPlayer()?.blocs ?? 0;
   const harvest = simulation.lastHarvest;
   const build = simulation.lastBuild;
 
-  if (harvest?.harvested && simulation.stores.controlled.get(PLAYER)!.harvestCooldown > 0) {
+  if (harvest?.harvested && controlOfPlayer()!.harvestCooldown > 0) {
     return `${blocs} blocs — +${harvest.gained} (${harvest.kind})`;
   }
   if (harvest && !harvest.harvested && harvest.reason !== 'attente') {
@@ -98,9 +134,14 @@ function actionStatus(): string {
 
 /** Démarre un enregistrement sur un monde neuf, moteur en marche. */
 function startRecording(): void {
+  if (client) {
+    setVerdict('enregistrement indisponible côté client : l autorité réécrit l état', 'alerte');
+    return;
+  }
   engine.resume();
-  simulation = new Simulation(SEED);
-  recorder = new Recorder(SEED);
+  simulation = new Simulation(SEED, [activePlayer()]);
+  if (host) host.simulation.restore(simulation.snapshot(), 0);
+  recorder = new Recorder(SEED, simulation.players());
   saved = null;
   savedNote = 'aucun';
   inspector.select(null);
@@ -165,8 +206,21 @@ const engine = new Engine(
         build: keyboard.isPressed('KeyE'),
         harvest: keyboard.isPressed('KeyF'),
       };
-      recorder?.capture(input);
-      simulation.step(input);
+
+      if (host) {
+        host.setLocalInput(input);
+        host.advance();
+        recorder?.capture(host.lastTick);
+      } else if (client) {
+        // Pas d'enregistrement côté client : sa simulation est réécrite par
+        // l'autorité, un rejeu local ne prouverait rien.
+        client.setLocalInput(input);
+        client.advance();
+      } else {
+        const tick = [{ player: PLAYER, ...input }];
+        recorder?.capture(tick);
+        simulation.step(tick);
+      }
     },
     render(alpha) {
       // La caméra suit avec le temps réel : elle appartient à l'affichage, pas
@@ -212,8 +266,54 @@ function refreshOverlay(): void {
     biomeAt(SEED, position.x, position.y),
     actionStatus(),
     `${chunks.size} morceaux · ${simulation.stores.harvested.size} récoltés`,
+    networkStatus(),
     recorder ? `● ${recorder.frameCount} pas` : `${simulation.world.entityCount} entités`,
   ].join('   ·   ');
+}
+
+function networkStatus(): string {
+  const players = simulation.players().length;
+  if (role === 'solo') return 'solo';
+  if (client) {
+    const lead = client.simulation.stepCount;
+    return `client · ${players} joueurs · ${client.selfCorrections} corrections · pas ${lead}`;
+  }
+  return `hôte · ${players} joueurs`;
+}
+
+/**
+ * Élection : on demande l'état ; si personne ne répond, on devient l'hôte.
+ *
+ * Aucun serveur n'est disponible sur un site statique. `BroadcastChannel` ne
+ * franchit pas le navigateur — c'est un banc d'essai du netcode, pas du
+ * multijoueur par Internet. Le transport étant une interface, un WebSocket se
+ * substituerait ici sans toucher au reste.
+ */
+function electRole(): void {
+  const scout = new ChannelTransport();
+  let decided = false;
+
+  scout.onMessage((message) => {
+    if (decided || message.kind !== 'state') return;
+    decided = true;
+    scout.close();
+    client = new Client(SEED, new ChannelTransport(), localPlayer);
+    simulation = client.simulation;
+    role = 'client';
+    setVerdict('client — l état vient de l hôte, vos demandes sont prédites puis confirmées', 'neutre');
+  });
+
+  scout.send({ kind: 'hello' });
+
+  window.setTimeout(() => {
+    if (decided) return;
+    decided = true;
+    scout.close();
+    host = new Host(SEED, new ChannelTransport(), localPlayer);
+    simulation = host.simulation;
+    role = 'hôte';
+    setVerdict('hôte — ouvrez un second onglet pour faire entrer un joueur', 'neutre');
+  }, 400);
 }
 
 /** Surface d'inspection, première pierre de l'outillage — et appui des tests. */
@@ -238,6 +338,16 @@ function refreshOverlay(): void {
   painter,
   engine,
   inspector,
+  get role() {
+    return role;
+  },
+  get host() {
+    return host;
+  },
+  get client() {
+    return client;
+  },
+  localPlayer,
   replay,
   compare,
   CHUNK_SIZE,
@@ -247,6 +357,7 @@ keyboard.attach();
 resize();
 window.addEventListener('resize', resize, { passive: true });
 setVerdict('appuyez sur R pour enregistrer une session', 'neutre');
+electRole();
 engine.start();
 setInterval(refreshOverlay, 250);
 refreshOverlay();

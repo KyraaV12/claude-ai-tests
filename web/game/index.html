@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Récolter et construire</title>
+<title>Deux joueurs dans un monde</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400..600&display=swap">
@@ -140,8 +140,8 @@
 </head>
 <body>
   <header>
-    <p class="eyebrow">claude-ai-tests · tranche T5</p>
-    <h1>Récolter et construire</h1>
+    <p class="eyebrow">claude-ai-tests · tranche T6</p>
+    <h1>Deux joueurs</h1>
     <p class="eyebrow"><a href="../">← banc d'essai</a></p>
   </header>
 
@@ -168,6 +168,16 @@
     <li><kbd>O</kbd><span>capturer l'état</span></li>
     <li><kbd>P</kbd><span>le restaurer</span></li>
   </ul>
+
+  <p class="note"><strong>Ouvrez cette page dans un second onglet</strong> : le premier devient l'hôte, le second un client. Vous voyez alors deux joueurs dans le même monde. La barre d'état indique le rôle, le nombre de joueurs, et le nombre de fois où le client a dû être corrigé.</p>
+
+  <p class="note">L'hôte fait autorité : il exécute la simulation, les clients lui envoient leurs demandes et reçoivent son état. Un client n'attend pas la réponse — il <strong>prédit</strong> immédiatement ses propres demandes, puis, quand l'état d'autorité arrive, il le reprend et <strong>rejoue</strong> celles que l'hôte n'a pas encore confirmées. C'est exactement ce que rendent possibles le pas fixe, la sérialisation complète et le déterminisme construits dans les tranches précédentes : sans eux, cette réconciliation ne serait pas écrivable.</p>
+
+  <p class="note">Le compteur de corrections doit rester à zéro pour vous-même : un client connaît ses propres demandes, il prédit donc juste. Il ne peut pas deviner celles de l'autre joueur, qui est extrapolé puis rattrapé — c'est normal, et mesuré.</p>
+
+  <p class="note"><strong>Le terrain ne circule jamais.</strong> Seules les entités sont transmises ; chaque pair recalcule le monde depuis la graine. C'est ce que la frontière posée en T3 achète ici, et un test vérifie qu'aucun mot du vocabulaire du terrain n'apparaît dans l'état échangé.</p>
+
+  <p class="note"><em>Réserve honnête</em> : le transport est un <code>BroadcastChannel</code>, qui ne franchit pas le navigateur. Ce n'est pas du multijoueur par Internet — c'est un banc d'essai du netcode sur un site statique, où aucun serveur ne peut vivre. Le transport étant une interface, un WebSocket ou un WebRTC se substituerait sans toucher au netcode.</p>
 
   <p class="note"><kbd>F</kbd> récolte l'arbre ou le rocher le plus proche — trois blocs pour un arbre, deux pour un rocher. <kbd>E</kbd> pose une construction devant vous, dans la direction où vous alliez, contre un bloc. Huit blocs au départ seulement : bâtir oblige à récolter.</p>
 

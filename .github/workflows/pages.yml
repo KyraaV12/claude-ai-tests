@@ -3,7 +3,11 @@ name: Vérifier et déployer
 on:
   push:
     branches: [main]
+  # Sans « types », GitHub n'écoute que opened, synchronize et reopened : sortir
+  # une pull request du brouillon ne déclenchait donc aucune vérification, et
+  # elle pouvait être fusionnée sur la foi d'une CI qui datait ou n'existait pas.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 jobs:
@@ -32,7 +36,9 @@ jobs:
     # Rien n'est publié tant que les types et les tests ne passent pas : le site
     # en ligne ne peut pas être en avance sur ce qui a été vérifié.
     needs: check
-    if: github.event_name != 'pull_request'
+    # La branche, pas seulement l'événement : sans ça, un workflow_dispatch
+    # lancé depuis une branche publierait cette branche en production.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
