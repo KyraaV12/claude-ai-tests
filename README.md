@@ -11,3 +11,9 @@ python3 -m http.server 8000
 ```
 
 puis ouvrir http://localhost:8000. Un double-clic sur le fichier fonctionne aussi.
+
+## Publication
+
+Le workflow `.github/workflows/pages.yml` déploie la racine du dépôt sur GitHub Pages à chaque push sur `main`. Il active Pages lui-même au premier passage (`configure-pages` avec `enablement: true`), aucun réglage manuel n'est nécessaire.
+
+Site : https://kyraav12.github.io/claude-ai-tests/
