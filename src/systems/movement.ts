@@ -12,6 +12,20 @@ export interface Bounds {
   height: number;
 }
 
+/**
+ * Écart signé le plus court entre deux coordonnées sur un axe replié.
+ *
+ * Sur un monde qui se replie, deux points de part et d'autre d'un bord sont
+ * voisins : l'écart brut les dit éloignés, celui-ci dit la vérité. Physique et
+ * inspecteur en dépendent tous deux — d'où une seule définition.
+ */
+export function shortestDelta(delta: number, size: number): number {
+  const half = size / 2;
+  if (delta > half) return delta - size;
+  if (delta < -half) return delta + size;
+  return delta;
+}
+
 /** Ramène une coordonnée dans [0, size), y compris pour les valeurs négatives. */
 export function wrap(value: number, size: number): number {
   const remainder = value % size;

@@ -6,13 +6,18 @@ import type { Recording } from './core/replay.ts';
 import { Keyboard } from './systems/input.ts';
 import { render } from './systems/render.ts';
 import type { Palette } from './systems/render.ts';
+import { createInspector } from './tools/panel.ts';
+import { findNearest, toWorldPoint } from './tools/inspect.ts';
 
 const SEED = 20260826;
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement | null;
 const overlay = document.getElementById('overlay');
 const verdict = document.getElementById('verdict');
-if (!canvas || !overlay || !verdict) throw new Error('Le gabarit doit contenir #scene, #overlay et #verdict');
+const inspectorHost = document.getElementById('inspector');
+if (!canvas || !overlay || !verdict || !inspectorHost) {
+  throw new Error('Le gabarit doit contenir #scene, #overlay, #verdict et #inspector');
+}
 
 const ctx = canvas.getContext('2d');
 if (!ctx) throw new Error('Canvas 2D indisponible dans ce navigateur');
@@ -34,6 +39,7 @@ function readPalette(): Palette {
     grid: read('--grid', '#c6d0de'),
     ink: read('--ink', '#0f141c'),
     outline: read('--line-strong', '#b7c1ce'),
+    accent: read('--accent', '#22409e'),
   };
 }
 
@@ -65,10 +71,13 @@ function setVerdict(text: string, tone: 'neutre' | 'ok' | 'alerte'): void {
  * session enregistrée.
  */
 function startRecording(): void {
+  // Enregistrer depuis un moteur en pause donnerait une session vide.
+  engine.resume();
   simulation = new Simulation(SEED, WORLD_BOUNDS);
   recorder = new Recorder(SEED);
   saved = null;
   savedNote = 'aucun';
+  inspector.select(null);
   setVerdict('enregistrement en cours — rejouez avec R', 'neutre');
 }
 
@@ -96,7 +105,19 @@ function stopAndVerify(): void {
 
 window.addEventListener('keydown', (event) => {
   if (event.repeat) return;
-  if (event.code === 'KeyR') {
+  // Les raccourcis de l'outil ne doivent pas s'appliquer pendant qu'on édite.
+  if (event.target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName)) return;
+
+  if (event.code === 'Space') {
+    event.preventDefault();
+    if (engine.isPaused) engine.resume();
+    else engine.pause();
+    inspector.refresh();
+  } else if (event.code === 'Period') {
+    if (!engine.isPaused) engine.pause();
+    engine.stepOnce(1);
+    inspector.refresh();
+  } else if (event.code === 'KeyR') {
     if (recorder) stopAndVerify();
     else startRecording();
   } else if (event.code === 'KeyO') {
@@ -117,16 +138,30 @@ const engine = new Engine(
       simulation.step(input);
     },
     render(alpha) {
-      render(ctx!, simulation.stores, alpha, WORLD_BOUNDS, palette, cssSize);
+      render(ctx!, simulation.stores, alpha, WORLD_BOUNDS, palette, cssSize, inspector.selected());
     },
   },
   STEPS_PER_SECOND,
 );
 
+const inspector = createInspector({
+  container: inspectorHost,
+  getWorld: () => simulation.world,
+  getStores: () => simulation.stores,
+  engine,
+});
+
+// Cliquer dans l'aire de jeu sélectionne ce qu'on désigne.
+canvas.addEventListener('pointerdown', (event) => {
+  const point = toWorldPoint(event.clientX, event.clientY, canvas.getBoundingClientRect(), WORLD_BOUNDS);
+  inspector.select(findNearest(simulation.stores, point.x, point.y, WORLD_BOUNDS));
+});
+
 function refreshOverlay(): void {
   const stats = engine.getStats();
+  inspector.refresh();
   overlay!.textContent = [
-    `${stats.fps.toFixed(0)} i/s`,
+    engine.isPaused ? '⏸ en pause' : `${stats.fps.toFixed(0)} i/s`,
     `t = ${simulation.elapsedSeconds.toFixed(1)} s`,
     `${simulation.world.entityCount} entités`,
     recorder ? `● ${recorder.frameCount} pas enregistrés` : 'enregistrement : arrêté',
@@ -156,6 +191,7 @@ function refreshOverlay(): void {
     return lastRecording;
   },
   engine,
+  inspector,
   replay,
   compare,
 };

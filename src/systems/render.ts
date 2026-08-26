@@ -1,3 +1,4 @@
+import type { Entity } from '../core/world.ts';
 import type { Stores } from '../core/components.ts';
 import type { Bounds } from './movement.ts';
 import { wrap } from './movement.ts';
@@ -7,6 +8,7 @@ export interface Palette {
   grid: string;
   ink: string;
   outline: string;
+  accent: string;
 }
 
 /** Zone d'affichage du monde dans le canevas, après mise à l'échelle et centrage. */
@@ -42,6 +44,8 @@ export function render(
   bounds: Bounds,
   palette: Palette,
   size: { width: number; height: number },
+  /** L'entité sélectionnée dans l'inspecteur, cerclée pour être retrouvée d'un coup d'œil. */
+  highlight: Entity | null = null,
 ): void {
   const view = fit(size.width, size.height, bounds);
 
@@ -83,11 +87,23 @@ export function render(
     ctx.fillStyle = `hsl(${sprite.hue} 70% 55%)`;
     ctx.fill();
 
-    // L'entité pilotée porte un liseré, pour la retrouver d'un coup d'œil.
+    // L'entité pilotée porte un liseré, pour la distinguer du décor.
     if (stores.controlled.has(entity)) {
       ctx.lineWidth = 2 / view.scale;
       ctx.strokeStyle = palette.ink;
       ctx.stroke();
+    }
+
+    // La sélection de l'inspecteur porte un anneau, à l'écart du corps : sans
+    // lui, choisir une entité dans la liste ne dirait pas laquelle c'est ici.
+    if (entity === highlight) {
+      ctx.beginPath();
+      ctx.arc(x, y, body.radius + 7, 0, Math.PI * 2);
+      ctx.lineWidth = 2 / view.scale;
+      ctx.strokeStyle = palette.accent;
+      ctx.setLineDash([5 / view.scale, 4 / view.scale]);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
   }
 
