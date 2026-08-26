@@ -7,6 +7,7 @@ import type { Recording } from './core/replay.ts';
 import { Keyboard } from './systems/input.ts';
 import { render } from './systems/render.ts';
 import type { Palette } from './systems/render.ts';
+import { FOV, renderFirstPerson, worldDirection } from './systems/firstperson.ts';
 import { createInspector } from './tools/panel.ts';
 import { findNearest } from './tools/inspect.ts';
 import { ChunkCache, CHUNK_SIZE, chunkCoordOf } from './world/chunk.ts';
@@ -199,16 +200,72 @@ window.addEventListener('keydown', (event) => {
     savedNote = `${JSON.stringify(saved).length} octets`;
   } else if (event.code === 'KeyP' && saved) {
     simulation.world.restore(saved);
+  } else if (event.code === 'KeyV') {
+    view = view === 'dessus' ? 'subjective' : 'dessus';
+    if (view === 'dessus' && document.pointerLockElement === canvas) document.exitPointerLock();
+    setVerdict(
+      view === 'subjective'
+        ? 'vue subjective — cliquez pour capturer la souris, V pour revenir au-dessus'
+        : 'vue de dessus — V pour passer en vue subjective',
+      'neutre',
+    );
   }
+});
+
+canvas.addEventListener('click', () => {
+  // La souris ne se capture qu'en vue subjective : en vue de dessus, le clic
+  // sert à choisir une entité dans l'inspecteur.
+  if (view === 'subjective' && document.pointerLockElement !== canvas) {
+    void canvas.requestPointerLock();
+  }
+});
+
+document.addEventListener('mousemove', (event) => {
+  if (document.pointerLockElement !== canvas) return;
+  yaw += event.movementX * MOUSE_SENSITIVITY;
 });
 
 /** Horodatage de l'image précédente, pour mesurer le vrai temps écoulé. */
 let lastFrame = 0;
 
+/**
+ * Le point de vue, et la direction du regard.
+ *
+ * Les deux appartiennent à l'**affichage**, au même titre que la caméra. Rien
+ * de tout cela n'entre dans la simulation : ce qui en sort, c'est une
+ * direction du monde, exactement comme quand on jouait vu de dessus. C'est ce
+ * qui permet d'ajouter une vue subjective sans toucher au déterminisme, à
+ * l'empreinte du scénario, au rejeu ni au réseau.
+ */
+type View = 'dessus' | 'subjective';
+let view: View = 'dessus';
+let yaw = 0;
+
+/** Vitesse de rotation au clavier, en radians par seconde. */
+const TURN_SPEED = 2.6;
+/** Radians par pixel de souris. Réglé à la main : plus haut, on perd le nord. */
+const MOUSE_SENSITIVITY = 0.0024;
+
+/** Ce que le joueur demande, vu de sa place. */
+function firstPersonRequest(): { x: number; y: number } {
+  const held = (...codes: string[]): number => (codes.some((code) => keyboard.isPressed(code)) ? 1 : 0);
+  const forward = held('KeyW', 'ArrowUp', 'KeyZ') - held('KeyS', 'ArrowDown');
+  // Les flèches gauche et droite font tourner : se déporter reste sur A et D.
+  const strafe = held('KeyD') - held('KeyA', 'KeyQ');
+  return worldDirection(yaw, forward, strafe);
+}
+
+function turnRequest(): number {
+  const held = (code: string): number => (keyboard.isPressed(code) ? 1 : 0);
+  return held('ArrowRight') - held('ArrowLeft');
+}
+
 const engine = new Engine(
   {
     fixedUpdate() {
-      const axis = keyboard.axis();
+      // En vue subjective, la demande est exprimée depuis l'œil puis tournée
+      // en direction du monde. La trame d'entrée reçoit la même chose qu'avant.
+      const axis = view === 'subjective' ? firstPersonRequest() : keyboard.axis();
       // L'action de pose fait partie de l'entrée : un geste hors de la trame
       // ne serait pas enregistré, et le rejeu divergerait sans explication.
       const input = {
@@ -247,6 +304,25 @@ const engine = new Engine(
       // ils n'appartiennent qu'à l'image.
       client?.smoothing.decay(elapsed);
 
+      const offsets = client ? { offsetOf: (entity: Entity) => client!.smoothing.offsetOf(entity) } : {};
+
+      if (view === 'subjective') {
+        yaw += turnRequest() * TURN_SPEED * elapsed;
+        // L'œil est posé sur la position interpolée du personnage, pas sur la
+        // caméra lissée : un point de vue qui traîne derrière soi donne le
+        // mal de mer.
+        renderFirstPerson(ctx!, {
+          stores: simulation.stores,
+          chunks,
+          eye: { x: target.x, y: target.y, yaw },
+          lens: { width: viewport.width, height: viewport.height, fov: FOV },
+          steps: simulation.stepCount,
+          self: playerEntity(),
+          ...offsets,
+        });
+        return;
+      }
+
       render(ctx!, {
         stores: simulation.stores,
         chunks,
@@ -257,7 +333,7 @@ const engine = new Engine(
         alpha,
         steps: simulation.stepCount,
         highlight: inspector.selected(),
-        ...(client ? { offsetOf: (entity: Entity) => client!.smoothing.offsetOf(entity) } : {}),
+        ...offsets,
       });
     },
   },
@@ -272,6 +348,7 @@ const inspector = createInspector({
 });
 
 canvas.addEventListener('pointerdown', (event) => {
+  if (view === 'subjective') return;
   const rect = canvas.getBoundingClientRect();
   const point = screenToWorld(camera, viewport, event.clientX - rect.left, event.clientY - rect.top);
   inspector.select(findNearest(simulation.stores, point.x, point.y));
@@ -289,6 +366,7 @@ function refreshOverlay(): void {
     // L'heure et la phase : elles ne sont stockées nulle part, elles se
     // déduisent du compteur de pas affiché juste à côté.
     `${clockLabel(simulation.stepCount)} ${phaseAt(simulation.stepCount)}`,
+    view === 'subjective' ? `1re personne ${((((yaw * 180) / Math.PI) % 360 + 360) % 360).toFixed(0)}°` : 'vue de dessus',
     actionStatus(),
     `${chunks.size} morceaux · ${simulation.stores.creature.size} bêtes`,
     networkStatus(),

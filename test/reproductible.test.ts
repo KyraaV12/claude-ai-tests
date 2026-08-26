@@ -30,6 +30,7 @@ const FORBIDDEN = ['Math.sin', 'Math.cos', 'Math.tan', 'Math.hypot', 'Math.exp',
  */
 const DISPLAY_ONLY = new Set([
   'systems/render.ts',
+  'systems/firstperson.ts', // une autre projection des mêmes coordonnées
   'systems/terrain-painter.ts',
   'net/smoothing.ts',
   'world/camera.ts',

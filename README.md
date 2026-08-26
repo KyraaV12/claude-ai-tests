@@ -161,6 +161,20 @@ La faune apparaît autour des joueurs et s'efface quand plus personne ne la rega
 
 **Seule l'autorité peuple le monde.** Un client qui devinerait les apparitions verrait ses bêtes s'évaporer au premier état reçu — même raison qui lui interdit de rejouer la pose d'un autre joueur. La conséquence se mesure : les corrections d'un client se répartissent maintenant entre *erreurs de prédiction* (zéro, à toutes les latences) et *apparitions reçues*. Mêler les deux aurait fait monter un compteur qui ne dit plus rien.
 
+## Voir de ses yeux
+
+<kbd>V</kbd> bascule entre la vue de dessus et la première personne. Le monde reste plat et la simulation identique : une vue subjective n'est **qu'une autre projection des mêmes coordonnées**, et c'est ce qui permet de l'ajouter sans toucher au déterminisme, à l'empreinte du scénario, au rejeu ni au réseau.
+
+**La direction du regard n'est pas de l'état.** Elle vit dans l'affichage. Ce qui entre dans la trame d'entrée reste une direction du monde, exactement comme avant : le joueur tourne la tête, et seul le déplacement qui en résulte est simulé. Réserve honnête : les autres joueurs ne voient donc pas où l'on regarde. Le jour où une action visera, le regard devra passer par la trame.
+
+Le rendu projette le décor en panneaux : le sol est échantillonné dans le cache de morceaux plutôt que recalculé, le lointain fond dans la couleur du ciel à l'horizon, et la nuit garde son voile percé par les torches. `src/systems/firstperson.ts` n'expose que des fonctions pures pour la géométrie — projection, ligne du sol, point du monde sous un pixel — et `test/firstperson.test.ts` les vérifie sans canevas ni navigateur, y compris l'aller-retour complet écran → monde → écran.
+
+Trois défauts trouvés à l'œil, qu'aucun test de géométrie ne pouvait voir :
+
+- **Une bande blafarde en travers du paysage.** Les premières lignes sous l'horizon regardent si loin que le sol n'y est plus dessiné ; personne ne les peignait, et le voile de lumière posé par-dessus révélait le fond de la page. Le ciel est désormais peint sur toute la hauteur.
+- **Toutes les bêtes et tous les murs en noir.** Les entités portent leur couleur en `hsl(…)` et le décor en `#rrggbb` ; le décodeur n'attendait que la seconde forme et rendait `NaN` sur la première. Les couleurs circulent maintenant en composantes, et un test couvre la conversion.
+- **Une nuit qui était un écran éteint.** Le décor est déjà peint à la lumière du moment ; poser le voile en entier par-dessus assombrissait une seconde fois. Un fond de clair de lune, et une part de voile seulement.
+
 ## Le même monde sur tous les moteurs
 
 Le banc a trouvé une panne qu'aucun test numérique ne pouvait voir : **le scénario de référence rendait une empreinte en CI et une autre dans le navigateur.** Même graine, quarante-neuf entités des deux côtés, et un `y` qui différait à la quatorzième décimale — assez pour que deux SHA-256 n'aient plus rien à voir.
