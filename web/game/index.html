@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Construire dans le monde</title>
+<title>Récolter et construire</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400..600&display=swap">
@@ -140,8 +140,8 @@
 </head>
 <body>
   <header>
-    <p class="eyebrow">claude-ai-tests · tranche T4</p>
-    <h1>Construire</h1>
+    <p class="eyebrow">claude-ai-tests · tranche T5</p>
+    <h1>Récolter et construire</h1>
     <p class="eyebrow"><a href="../">← banc d'essai</a></p>
   </header>
 
@@ -160,6 +160,7 @@
   <ul class="keys">
     <li><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd><span>déplacer</span></li>
     <li><kbd>ZQSD</kbd><span>ou</span><kbd>WASD</kbd></li>
+    <li><kbd>F</kbd><span>récolter ce qui est à portée</span></li>
     <li><kbd>E</kbd><span>poser une construction</span></li>
     <li><kbd>Espace</kbd><span>pause</span></li>
     <li><kbd>.</kbd><span>avancer d'un pas</span></li>
@@ -168,7 +169,11 @@
     <li><kbd>P</kbd><span>le restaurer</span></li>
   </ul>
 
-  <p class="note"><kbd>E</kbd> pose une construction devant vous, dans la direction où vous alliez. Quarante blocs au départ, un par pose, et trois refus possibles : sans ressource, sur l'eau, ou place déjà prise. La barre d'état les nomme.</p>
+  <p class="note"><kbd>F</kbd> récolte l'arbre ou le rocher le plus proche — trois blocs pour un arbre, deux pour un rocher. <kbd>E</kbd> pose une construction devant vous, dans la direction où vous alliez, contre un bloc. Huit blocs au départ seulement : bâtir oblige à récolter.</p>
+
+  <p class="note"><strong>Un arbre est du dérivé, un arbre abattu est de l'état.</strong> C'est la difficulté propre à un monde généré, et voici comment elle est résolue ici : le générateur n'est jamais modifié — il continue de produire cet arbre à cet endroit, pour toujours. Ce qui est enregistré, c'est une <em>exception</em> : le morceau, et le rang de l'élément dans son ordre de génération. Le monde visible se lit comme <em>le généré moins les exceptions</em>. Un test vérifie qu'après récolte, `generateChunk` rend toujours le même nombre d'éléments — si ce test cassait, la frontière aurait été franchie.</p>
+
+  <p class="note">Le coût est proportionnel à ce qu'on a réellement changé : une entité par élément récolté, rien pour les millions d'arbres intacts.</p>
 
   <p class="note">Une construction est une <strong>entité</strong>, pas du décor : elle ne se recalcule pas depuis la graine, donc elle est sauvegardée, comparée, et un jour répliquée. C'est la frontière que cette tranche met à l'épreuve — et elle tient. La simulation <em>lit</em> le terrain pour refuser l'eau, sans jamais l'écrire : `biomeAt` étant une fonction pure de la graine, le rejeu reste exact. Enregistrez avec <kbd>R</kbd>, posez quelques blocs, rejouez : les constructions réapparaissent aux mêmes endroits, depuis les seules touches.</p>
 

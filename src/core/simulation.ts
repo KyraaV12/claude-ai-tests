@@ -7,6 +7,8 @@ import { applyControl, integrate } from '../systems/movement.ts';
 import { resolveCollisions } from '../systems/collision.ts';
 import { tickBuildCooldowns, tryBuild } from '../systems/build.ts';
 import type { BuildOutcome } from '../systems/build.ts';
+import { tickHarvestCooldowns, tryHarvest } from '../systems/harvest.ts';
+import type { HarvestOutcome } from '../systems/harvest.ts';
 import { findSpawn } from '../world/terrain.ts';
 
 /**
@@ -19,6 +21,7 @@ export interface InputFrame {
   x: number;
   y: number;
   build: boolean;
+  harvest: boolean;
 }
 
 /** L'entité pilotée. Sa création en premier lui donne un identifiant stable. */
@@ -46,8 +49,9 @@ export class Simulation {
   readonly seed: number;
   readonly spawn: { x: number; y: number };
   private steps = 0;
-  /** Résultat de la dernière tentative de pose, pour l'affichage. Hors état du monde. */
+  /** Résultats des dernières tentatives, pour l'affichage. Hors état du monde. */
   lastBuild: BuildOutcome | null = null;
+  lastHarvest: HarvestOutcome | null = null;
 
   constructor(seed: number) {
     this.seed = seed;
@@ -68,7 +72,11 @@ export class Simulation {
 
   step(input: InputFrame): void {
     tickBuildCooldowns(this.stores);
+    tickHarvestCooldowns(this.stores);
     applyControl(this.stores, input, STEP_SECONDS);
+    if (input.harvest) {
+      this.lastHarvest = tryHarvest(this.world, this.stores, this.seed, PLAYER);
+    }
     if (input.build) {
       this.lastBuild = tryBuild(this.world, this.stores, this.seed, PLAYER, this.steps);
     }
@@ -97,8 +105,11 @@ export class Simulation {
       facingX: 0,
       facingY: 1,
       buildCooldown: 0,
+      harvestCooldown: 0,
     });
-    stores.inventory.set(player, { blocs: 40 });
+    // Peu de blocs au départ : bâtir doit obliger à récolter, sinon la
+    // ressource ne serait qu'un compteur décoratif.
+    stores.inventory.set(player, { blocs: 8 });
 
     // Quelques compagnons autour du départ. Ce sont des entités, donc de l'état
     // sauvegardé et répliqué — à l'inverse du décor, qui se recalcule.

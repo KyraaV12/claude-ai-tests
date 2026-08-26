@@ -60,6 +60,18 @@ Le point de départ est cherché en spirale depuis l'origine jusqu'à la terre f
 
 La caméra appartient à l'affichage, jamais à la simulation : elle est lissée avec le temps réel, donc non déterministe, et c'est sans conséquence puisque aucun système ne la lit. La faire entrer dans `Simulation.step()` casserait le rejeu.
 
+## Récolter
+
+<kbd>F</kbd> récolte l'arbre ou le rocher le plus proche : trois blocs pour un arbre, deux pour un rocher. Huit blocs au départ seulement, donc bâtir oblige à récolter.
+
+**Un arbre est du dérivé, un arbre abattu est de l'état.** C'est la difficulté propre à un monde généré. La réponse retenue ici : le générateur n'est jamais modifié — il continue de produire cet arbre à cet endroit, pour toujours. Ce qui est enregistré, c'est une **exception** : `{ cx, cy, index }`, où `index` est le rang de l'élément dans l'ordre de génération de son morceau.
+
+Le monde visible se lit comme **le généré moins les exceptions**. Un test verrouille la frontière : après récolte, `generateChunk` rend toujours le même nombre d'éléments. S'il cassait, le terrain aurait cessé d'être une fonction pure de la graine.
+
+Le coût est proportionnel à ce qu'on a réellement changé : une entité par élément récolté, rien pour les millions d'arbres intacts.
+
+`nearestProp` recalcule les morceaux plutôt que de lire le cache du rendu : la simulation ne doit rien devoir à l'affichage, et `generateChunk` étant pure, le résultat est le même.
+
 ## Construire
 
 <kbd>E</kbd> pose une construction devant le joueur. Quarante blocs au départ, un par pose, trois refus nommés : *sans ressource*, *sur l'eau*, *place occupée*.

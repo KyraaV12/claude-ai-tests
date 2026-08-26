@@ -47,6 +47,8 @@ export interface Controlled {
   facingY: number;
   /** Pas restants avant de pouvoir reposer. Empêche la pose en rafale. */
   buildCooldown: number;
+  /** Pas restants avant de pouvoir récolter à nouveau. */
+  harvestCooldown: number;
 }
 
 /** Ce que porte une entité. Le début de l'inventaire du plan. */
@@ -64,6 +66,23 @@ export interface Structure {
   placedAtStep: number;
 }
 
+/**
+ * L'exception qui retire un élément de décor du monde généré.
+ *
+ * Le générateur n'est pas touché : il continue de produire cet arbre à cet
+ * endroit, pour toujours. Ce qui change, c'est la lecture — le monde visible
+ * est *le généré moins les exceptions*. C'est ce qui permet à un monde infini
+ * de garder une mémoire de ce qu'on lui a pris sans rien stocker du reste.
+ *
+ * L'identité d'un élément est sa place dans l'ordre de génération de son
+ * morceau : déterministe, donc suffisante et minuscule.
+ */
+export interface Harvested {
+  cx: number;
+  cy: number;
+  index: number;
+}
+
 export interface Stores {
   transform: ComponentStore<Transform>;
   velocity: ComponentStore<Velocity>;
@@ -72,6 +91,7 @@ export interface Stores {
   controlled: ComponentStore<Controlled>;
   inventory: ComponentStore<Inventory>;
   structure: ComponentStore<Structure>;
+  harvested: ComponentStore<Harvested>;
 }
 
 export function createStores(world: World): Stores {
@@ -83,6 +103,7 @@ export function createStores(world: World): Stores {
     controlled: world.register(new ComponentStore<Controlled>('controlled')),
     inventory: world.register(new ComponentStore<Inventory>('inventory')),
     structure: world.register(new ComponentStore<Structure>('structure')),
+    harvested: world.register(new ComponentStore<Harvested>('harvested')),
   };
 }
 
