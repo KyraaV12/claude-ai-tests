@@ -1,6 +1,7 @@
 import type { Entity } from '../core/world.ts';
 import type { Stores, Transform, Velocity, Body } from '../core/components.ts';
 import type { Bounds } from './movement.ts';
+import { shortestDelta } from './movement.ts';
 
 /**
  * Collisions entre disques.
@@ -50,8 +51,8 @@ export function resolveCollisions(stores: Stores, bounds: Bounds): void {
 
       // Le monde se replie sur lui-même : deux corps de part et d'autre d'un
       // bord sont voisins, et l'écart le plus court peut passer par le bord.
-      const dx = shortest(b.transform.x - a.transform.x, bounds.width);
-      const dy = shortest(b.transform.y - a.transform.y, bounds.height);
+      const dx = shortestDelta(b.transform.x - a.transform.x, bounds.width);
+      const dy = shortestDelta(b.transform.y - a.transform.y, bounds.height);
 
       const distance = Math.hypot(dx, dy);
       const contact = a.body.radius + b.body.radius;
@@ -66,14 +67,6 @@ export function resolveCollisions(stores: Stores, bounds: Bounds): void {
       exchangeMomentum(a, b, nx, ny);
     }
   }
-}
-
-/** Écart signé le plus court entre deux coordonnées sur un axe replié. */
-function shortest(delta: number, size: number): number {
-  const half = size / 2;
-  if (delta > half) return delta - size;
-  if (delta < -half) return delta + size;
-  return delta;
 }
 
 /** Écarte les deux corps le long de la normale, au prorata inverse des masses. */

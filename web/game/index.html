@@ -3,26 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Collisions et rejeu</title>
+<title>Inspecteur d'entités</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400..600&display=swap">
 <style>
   :root{
     color-scheme: light dark;
-    --paper:#EBEEF3; --surface:#F9FAFC; --ink:#0F141C; --muted:#596373;
+    --paper:#EBEEF3; --surface:#F9FAFC; --raised:#FFFFFF; --ink:#0F141C; --muted:#596373;
     --line:#D2D9E3; --line-strong:#B7C1CE; --accent:#22409E; --accent-soft:#E2E8F8; --grid:#C6D0DE;
     --live:#0F7A57; --alert:#A3341B;
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
-      --paper:#0B0F16; --surface:#131A25; --ink:#E6EBF3; --muted:#909CAF;
+      --paper:#0B0F16; --surface:#131A25; --raised:#182231; --ink:#E6EBF3; --muted:#909CAF;
       --line:#212A38; --line-strong:#2F3A4A; --accent:#94ACFF; --accent-soft:#1A2440; --grid:#243040;
       --live:#4CC79A; --alert:#F08A6C;
     }
   }
   :root[data-theme="dark"]{
-    --paper:#0B0F16; --surface:#131A25; --ink:#E6EBF3; --muted:#909CAF;
+    --paper:#0B0F16; --surface:#131A25; --raised:#182231; --ink:#E6EBF3; --muted:#909CAF;
     --line:#212A38; --line-strong:#2F3A4A; --accent:#94ACFF; --accent-soft:#1A2440; --grid:#243040;
     --live:#4CC79A; --alert:#F08A6C;
   }
@@ -31,38 +31,102 @@
   body{
     margin:0; min-height:100vh; background:var(--paper); color:var(--ink);
     font-family:"Source Serif 4", Georgia, serif; font-size:1rem; line-height:1.6;
-    display:flex; flex-direction:column; gap:1rem;
-    padding:clamp(1rem,3vw,2rem);
+    display:flex; flex-direction:column; gap:1rem; padding:clamp(1rem,3vw,2rem);
   }
   a{ color:var(--accent); }
-  a:focus-visible, canvas:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
+  a:focus-visible, canvas:focus-visible, button:focus-visible, input:focus-visible{
+    outline:2px solid var(--accent); outline-offset:2px;
+  }
 
   header{ display:flex; flex-wrap:wrap; align-items:baseline; gap:.6rem 1.25rem; }
   h1{
     font-family:Archivo, "Helvetica Neue", Arial, sans-serif; font-weight:700;
     letter-spacing:-.03em; font-size:clamp(1.5rem,4vw,2.1rem); margin:0;
   }
-  .eyebrow, .mono{
+  .eyebrow{
     font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:.72rem; font-weight:500;
     letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
   }
 
-  .stage{
-    flex:1; min-height:340px;
-    border:1px solid var(--line); border-bottom:0; border-radius:3px 3px 0 0;
-    background:var(--surface); overflow:hidden;
-  }
-  canvas{ display:block; width:100%; height:100%; }
+  /* Le jeu et l'outil côte à côte : inspecter suppose de voir les deux. */
+  .workspace{ display:grid; grid-template-columns:minmax(0,1fr) 20rem; gap:1rem; align-items:start; }
+  @media (max-width:60rem){ .workspace{ grid-template-columns:minmax(0,1fr); } }
 
-  /* Hors du canevas, jamais par-dessus : une barre d'état qui masque le jeu
-     est exactement ce qu'un outil de mise au point ne doit pas faire. */
+  .play{ display:flex; flex-direction:column; min-width:0; }
+  .stage{
+    min-height:min(56vh,420px); border:1px solid var(--line); border-bottom:0;
+    border-radius:3px 3px 0 0; background:var(--surface); overflow:hidden;
+  }
+  canvas{ display:block; width:100%; height:100%; cursor:crosshair; }
+
   #overlay{
     font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:.72rem;
     color:var(--muted); background:var(--accent-soft);
-    border:1px solid var(--line); border-radius:0 0 3px 3px;
-    padding:.45rem .7rem;
+    border:1px solid var(--line); border-radius:0 0 3px 3px; padding:.45rem .7rem;
     font-variant-numeric:tabular-nums; white-space:nowrap; overflow-x:auto;
   }
+
+  #verdict{
+    font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:.78rem;
+    border:1px solid var(--line); border-left-width:3px; border-radius:3px;
+    padding:.55rem .75rem; margin:.75rem 0 0; color:var(--muted); background:var(--surface);
+  }
+  #verdict[data-tone="ok"]{ border-left-color:var(--live); color:var(--live); }
+  #verdict[data-tone="alerte"]{ border-left-color:var(--alert); color:var(--alert); }
+  #verdict[data-tone="neutre"]{ border-left-color:var(--line-strong); }
+
+  /* ── Inspecteur ─────────────────────────────────────────────────────── */
+  #inspector{
+    border:1px solid var(--line); border-radius:3px; background:var(--surface);
+    display:flex; flex-direction:column; overflow:hidden;
+    font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:.75rem;
+  }
+  .inspector-toolbar{
+    display:flex; align-items:center; gap:.4rem; flex-wrap:wrap;
+    padding:.5rem; border-bottom:1px solid var(--line); background:var(--accent-soft);
+  }
+  .inspector-button{
+    font:inherit; color:var(--ink); background:var(--raised);
+    border:1px solid var(--line-strong); border-radius:3px;
+    padding:.25rem .5rem; cursor:pointer;
+  }
+  .inspector-button:hover{ border-color:var(--accent); color:var(--accent); }
+  .inspector-clock{ margin-left:auto; color:var(--muted); font-variant-numeric:tabular-nums; }
+
+  .inspector-title{
+    margin:0; padding:.45rem .6rem; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.12em; font-size:.66rem;
+    border-bottom:1px solid var(--line);
+  }
+  .inspector-list{ max-height:13rem; overflow-y:auto; border-bottom:1px solid var(--line); }
+  .inspector-row{
+    display:flex; gap:.5rem; align-items:baseline; width:100%; text-align:left;
+    font:inherit; color:var(--ink); background:none; border:0;
+    border-bottom:1px solid var(--line); padding:.3rem .6rem; cursor:pointer;
+  }
+  .inspector-row:hover{ background:var(--accent-soft); }
+  .inspector-row.is-selected{ background:var(--accent-soft); box-shadow:inset 3px 0 0 var(--accent); }
+  .inspector-id{ color:var(--accent); font-weight:500; min-width:2.5rem; }
+  .inspector-tags{
+    color:var(--muted); font-size:.66rem; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap;
+  }
+
+  .inspector-detail{ max-height:22rem; overflow-y:auto; }
+  .inspector-group{ border-bottom:1px solid var(--line); padding:.4rem .6rem .55rem; }
+  .inspector-component{
+    margin:0 0 .3rem; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.1em; font-size:.62rem;
+  }
+  .inspector-field{ display:flex; align-items:center; gap:.5rem; margin-bottom:.2rem; }
+  .inspector-field-name{ color:var(--muted); min-width:5.5rem; }
+  .inspector-field input{
+    font:inherit; flex:1; min-width:0; color:var(--ink); background:var(--raised);
+    border:1px solid var(--line); border-radius:2px; padding:.15rem .35rem;
+    font-variant-numeric:tabular-nums;
+  }
+  .inspector-field input:focus{ border-color:var(--accent); }
+  .inspector-field input.is-rejected{ border-color:var(--alert); color:var(--alert); }
 
   .keys{ display:flex; flex-wrap:wrap; gap:.4rem 1.5rem; margin:0; padding:0; list-style:none; }
   .keys li{ display:flex; gap:.5rem; align-items:baseline; }
@@ -72,43 +136,42 @@
     padding:.1rem .35rem; color:var(--ink); background:var(--surface);
   }
   .note{ color:var(--muted); font-size:.92rem; max-width:70ch; margin:0; }
-
-  /* Le verdict de comparaison. Trois états, distingués par la couleur mais
-     aussi par le texte : la couleur seule ne suffit pas à porter une décision. */
-  #verdict{
-    font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:.78rem;
-    border:1px solid var(--line); border-left-width:3px; border-radius:3px;
-    padding:.55rem .75rem; color:var(--muted); background:var(--surface);
-  }
-  #verdict[data-tone="ok"]{ border-left-color:var(--live); color:var(--live); }
-  #verdict[data-tone="alerte"]{ border-left-color:var(--alert); color:var(--alert); }
-  #verdict[data-tone="neutre"]{ border-left-color:var(--line-strong); }
 </style>
 </head>
 <body>
   <header>
-    <p class="eyebrow">claude-ai-tests · tranche T1</p>
-    <h1>Collisions et rejeu</h1>
+    <p class="eyebrow">claude-ai-tests · tranche T2</p>
+    <h1>Inspecteur d'entités</h1>
     <p class="eyebrow"><a href="../">← banc d'essai</a></p>
   </header>
 
-  <div class="stage">
-    <canvas id="scene" tabindex="0" aria-label="Aire de simulation"></canvas>
+  <div class="workspace">
+    <div class="play">
+      <div class="stage">
+        <canvas id="scene" tabindex="0" aria-label="Aire de simulation — cliquez pour sélectionner une entité"></canvas>
+      </div>
+      <div id="overlay" role="status" aria-live="off">initialisation…</div>
+      <p id="verdict" role="status" data-tone="neutre">initialisation…</p>
+    </div>
+
+    <aside id="inspector" aria-label="Inspecteur d'entités"></aside>
   </div>
-  <div id="overlay" role="status" aria-live="off">initialisation…</div>
-  <p id="verdict" role="status" data-tone="neutre">initialisation…</p>
 
   <ul class="keys">
     <li><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd><span>déplacer</span></li>
     <li><kbd>ZQSD</kbd><span>ou</span><kbd>WASD</kbd></li>
+    <li><kbd>Espace</kbd><span>pause</span></li>
+    <li><kbd>.</kbd><span>avancer d'un pas</span></li>
     <li><kbd>R</kbd><span>enregistrer, puis rejouer et comparer</span></li>
     <li><kbd>O</kbd><span>capturer l'état</span></li>
     <li><kbd>P</kbd><span>le restaurer</span></li>
   </ul>
 
-  <p class="note"><kbd>R</kbd> repart d'un monde neuf et enregistre vos entrées, pas par pas. <kbd>R</kbd> à nouveau rejoue cet enregistrement hors écran, depuis la seule graine et la suite des touches, puis compare l'état final au vôtre. S'ils coïncident, la simulation est bien déterministe : le rythme de votre écran et le moment exact de vos appuis n'ont eu aucune influence sur le résultat. C'est la propriété sur laquelle reposeront les sauvegardes comparables et, plus tard, la prédiction réseau.</p>
+  <p class="note">Cliquez dans l'aire de jeu pour sélectionner ce que vous désignez, ou choisissez une entité dans la liste. Les champs sont modifiables à chaud : changez une masse ou une vitesse et regardez la simulation en tenir compte au pas suivant. En pause, le rendu n'interpole plus — ce que vous voyez est exactement l'état que vous éditez.</p>
 
-  <p class="note">La simulation avance à 60 pas fixes par seconde ; le rendu interpole entre deux pas. Le monde fait 1000 × 600 unités quelle que soit la fenêtre et se replie sur lui-même aux bords — les collisions aussi. <kbd>O</kbd> capture l'état complet, <kbd>P</kbd> le restaure.</p>
+  <p class="note">Modifier une valeur pendant un enregistrement fera diverger le rejeu, et la comparaison le dira : elle ne connaît que la graine et vos touches, pas vos retouches. C'est le comportement attendu, et la démonstration que la vérification sait aussi répondre non.</p>
+
+  <p class="note">La simulation avance à 60 pas fixes par seconde ; le monde fait 1000 × 600 unités et se replie sur lui-même aux bords — les collisions et la sélection au clic aussi.</p>
 
   <script type="module" src="./app.js"></script>
 </body>

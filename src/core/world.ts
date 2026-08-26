@@ -80,6 +80,11 @@ export class World {
     for (const store of this.stores.values()) store.remove(entity);
   }
 
+  /** Les entités vivantes, dans leur ordre de création. */
+  entities(): Entity[] {
+    return [...this.alive];
+  }
+
   isAlive(entity: Entity): boolean {
     return this.alive.has(entity);
   }

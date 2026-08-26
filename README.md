@@ -8,6 +8,7 @@ Bac à sable pour un moteur de jeu en TypeScript, servi dans le navigateur.
 | --- | --- |
 | `src/core/` | Boucle à pas fixe, monde entité/composant, sérialisation, aléatoire à graine, pas de simulation, enregistrement et rejeu |
 | `src/systems/` | Saisie clavier, déplacement, collisions, rendu canvas |
+| `src/tools/` | Inspecteur : logique sans DOM (`inspect.ts`) et panneau (`panel.ts`) |
 | `web/` | Pages statiques : le banc d'essai à la racine, la tranche T0 sous `game/` |
 | `test/` | Tests unitaires, exécutés par le lanceur intégré de Node |
 | `scripts/build.mjs` | Construction : esbuild pour le bundle, copie de `web/` vers `dist/` |
@@ -38,6 +39,18 @@ Une partie tient dans une graine et la suite des entrées, pas par pas (`Recordi
 Dans la page, <kbd>R</kbd> enregistre puis rejoue et compare. Une session d'une centaine de pas pèse environ 1,5 ko d'entrées, là où la suite des instantanés correspondants en pèserait des centaines de kilo-octets.
 
 C'est la brique commune à trois choses à venir : sauvegardes comparables, reproduction d'un bug à partir d'un enregistrement, et réconciliation réseau.
+
+## Inspecter
+
+La boucle sait s'arrêter (`Engine.pause()`) et avancer d'un nombre exact de pas (`stepOnce(n)`). À l'arrêt le rendu continue mais **n'interpole plus** : ce qui est affiché est exactement l'état qu'on inspecte.
+
+Le panneau liste les entités, montre les composants de celle qui est sélectionnée, et **écrit les champs numériques à chaud**. On sélectionne au clic dans l'aire de jeu — la distance passe par les bords repliés, comme la physique — ou dans la liste ; l'entité choisie est cerclée à l'écran.
+
+Toute la logique vit dans `src/tools/inspect.ts`, sans DOM, et se teste sans navigateur : quelle entité est sous le curseur, quels champs sont modifiables, ce qu'une écriture accepte. `panel.ts` ne fait que l'afficher.
+
+Deux refus délibérés : une valeur non finie n'est jamais écrite — un `NaN` dans une position contaminerait tout au pas suivant — et un champ vidé pour être retapé n'écrit rien, là où `Number('')` aurait mis zéro.
+
+Le moteur reçoit son ordonnanceur par injection, ce qui rend pause et pas-à-pas vérifiables hors navigateur : les tests pilotent les images à la main.
 
 ## Publication
 

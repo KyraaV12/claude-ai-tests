@@ -16,6 +16,13 @@ const BINDINGS: Record<string, [number, number]> = {
  * `event.code` plutôt que `event.key` : la touche sous l'index reste la même
  * en AZERTY et en QWERTY, ce qui évite d'avoir à choisir une disposition.
  */
+/** Vrai si l'événement vise un champ de saisie, où les touches appartiennent à l'utilisateur. */
+function isEditing(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+}
+
 export class Keyboard {
   private readonly pressed = new Set<string>();
   private readonly target: EventTarget;
@@ -58,6 +65,9 @@ export class Keyboard {
   private onKeyDown = (event: Event): void => {
     const key = event as KeyboardEvent;
     if (!(key.code in BINDINGS)) return;
+    // Sans cette garde, régler une valeur dans l'inspecteur piloterait aussi
+    // le joueur : les flèches serviraient les deux à la fois.
+    if (isEditing(key.target)) return;
     // Empêche les flèches de faire défiler la page pendant qu'on joue.
     key.preventDefault();
     this.pressed.add(key.code);
