@@ -1,6 +1,7 @@
 import type { Axis } from './input.ts';
 import type { Entity } from '../core/world.ts';
 import type { Stores } from '../core/components.ts';
+import { vectorLength } from '../core/trig.ts';
 
 /**
  * Déplacement dans un monde sans bords.
@@ -32,7 +33,7 @@ export function applyControl(stores: Stores, entity: Entity, axis: Axis, dt: num
       velocity.y *= decay;
     }
 
-    const speed = Math.hypot(velocity.x, velocity.y);
+    const speed = vectorLength(velocity.x, velocity.y);
     if (speed > control.maxSpeed) {
       const scale = control.maxSpeed / speed;
       velocity.x *= scale;

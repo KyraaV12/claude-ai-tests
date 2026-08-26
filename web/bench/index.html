@@ -143,7 +143,7 @@
 </head>
 <body>
   <header>
-    <p class="eyebrow">claude-ai-tests · tranche T7</p>
+    <p class="eyebrow">claude-ai-tests · tranche T8</p>
     <h1>Test Runner</h1>
     <p class="eyebrow"><a href="../">← banc d'essai</a> · <a href="../game/">le jeu →</a></p>
   </header>
@@ -168,6 +168,8 @@
   <p class="note"><em>Ce que le banc a trouvé en s'écrivant</em> : un <code>join</code> perdu laissait le joueur hors du monde pour toujours — rien ne le rejouait, et il fallait 5 % de pertes pour s'en apercevoir. Et le personnage d'un joueur déconnecté filait tout droit à l'infini, parce qu'aucune demande ne lui parvenait plus, donc aucun freinage : lâcher les touches est une demande, pas une absence de demande. Deux vraies pannes, invisibles à l'œil, trouvées en mesurant.</p>
 
   <p class="note"><strong>Puis une troisième, celle-là bien visible.</strong> Le personnage d'un autre joueur saccadait : jusqu'à 32 unités de saut là où un pas normal en fait 6,3. Deux causes. Le client rejouait les autres sans savoir sur quoi ils appuyaient — l'état porte maintenant les dernières demandes appliquées, et les corrections tombent de 80 à zéro. Et l'horloge du client se recale dix fois par seconde, ce qui déplace les autres de trois pas d'un coup — un décalage <em>purement visuel</em> encaisse ce saut et le laisse fondre, sans jamais toucher à la simulation. La ligne « Fluidité du joueur distant » mesure ce qu'il en reste.</p>
+
+  <p class="note"><strong>Et une quatrième, que seul un banc pouvait voir.</strong> Le scénario de référence rendait une empreinte en CI et une autre dans ce navigateur — même graine, quarante-neuf entités des deux côtés, un <code>y</code> qui différait à la quatorzième décimale. Mesuré sur quatre mille angles : <code>Math.sin</code> et <code>Math.cos</code> diffèrent sur les derniers bits entre le V8 de Node et celui de Chromium. La norme ne les y oblige pas ; elle oblige, en revanche, pour les additions, les multiplications et la racine carrée. La simulation passe désormais par un sinus écrit avec celles-là seulement, et les deux moteurs produisent le même monde au bit près. Un test lit le code pour interdire le retour de la panne.</p>
 
   <p class="note"><em>Réserve honnête</em> : « pas client par seconde » n'est pas un nombre d'images par seconde. Aucun rendu n'a lieu ici — c'est ce qu'un client peut <em>simuler</em>, donc le plafond au-dessus duquel aucune boucle d'affichage ne montera. Le vrai chiffre d'images se lit sur <a href="../game/">la page du jeu</a>.</p>
 

@@ -52,7 +52,7 @@ export class Client {
   simulation: Simulation;
   /** Demandes envoyées mais pas encore confirmées par l'hôte. */
   private unacked: Array<{ step: number; input: InputFrame }> = [];
-  private localInput: InputFrame = { x: 0, y: 0, build: false, harvest: false };
+  private localInput: InputFrame = { x: 0, y: 0, build: false, harvest: false, torch: false };
   private started = false;
   /** Pas restants avant de redemander son entrée. */
   private joinTimer = JOIN_RETRY_STEPS;
@@ -72,6 +72,22 @@ export class Client {
   /** Recalages d'horloge : l'avance a changé, il n'y a rien à comparer. */
   resyncs = 0;
   /**
+   * Corrections où le monde comptait d'autres entités que prévu.
+   *
+   * Une bête apparue, une bête oubliée : ce sont des décisions de l'autorité,
+   * pas des erreurs du client. Il ne les prend pas, il ne peut donc pas les
+   * deviner — au même titre qu'il ne devine pas les touches d'un autre joueur.
+   */
+  rosterChanges = 0;
+  /**
+   * Corrections qu'aucune apparition n'explique.
+   *
+   * C'est **la** mesure qui juge la prédiction. Sur un monde dont la liste
+   * d'entités n'a pas bougé, le client doit tomber juste : s'il se trompe là,
+   * c'est la chronologie ou le déterminisme qui sont cassés.
+   */
+  mispredictions = 0;
+  /**
    * Dernière demande connue de chaque joueur, telle que l'hôte l'a appliquée.
    *
    * Sert à extrapoler les autres personnages entre deux états, avec les mêmes
@@ -87,8 +103,9 @@ export class Client {
     this.player = player;
     this.transport = transport;
     this.lead = options.lead ?? 6;
-    // Aucun joueur au départ : les identités d'entités viennent de l'hôte.
-    this.simulation = new Simulation(seed, []);
+    // Aucun joueur au départ : les identités d'entités viennent de l'hôte. Et
+    // pas d'autorité : un client reçoit la faune, il ne l'invente pas.
+    this.simulation = new Simulation(seed, [], { authority: false });
     transport.onMessage((message) => this.receive(message));
     transport.send({ kind: 'join', player });
   }
@@ -148,7 +165,7 @@ export class Client {
     const tick: Tick = [{ player: this.player, ...own }];
     for (const [player, remote] of this.remoteInputs) {
       if (player === this.player) continue;
-      tick.push({ player, x: remote.x, y: remote.y, build: false, harvest: false });
+      tick.push({ player, x: remote.x, y: remote.y, build: false, harvest: false, torch: false });
     }
     return tick;
   }
@@ -213,13 +230,19 @@ export class Client {
 
     if (predictedSelf !== null && predictedSelf !== this.describeSelf()) this.selfCorrections++;
 
-    const result = compare(predicted, this.simulation.snapshot());
+    const settled = this.simulation.snapshot();
+    const result = compare(predicted, settled);
     this.lastCorrection = {
       step: message.step,
       differed: !result.identical,
       firstDifference: result.firstDifference,
     };
-    if (!result.identical) this.corrections++;
+    if (!result.identical) {
+      this.corrections++;
+      const sameRoster = JSON.stringify(predicted.entities) === JSON.stringify(settled.entities);
+      if (sameRoster) this.mispredictions++;
+      else this.rosterChanges++;
+    }
   }
 
   /** Les positions de tout ce que le client ne pilote pas. */

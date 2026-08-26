@@ -1,7 +1,8 @@
 import type { Entity, World } from '../core/world.ts';
-import type { Stores } from '../core/components.ts';
+import type { Material, Stores } from '../core/components.ts';
 import { CHUNK_SIZE, chunkCoordOf, generateChunk } from '../world/chunk.ts';
 import type { Prop, PropKind } from '../world/chunk.ts';
+import { vectorLength } from '../core/trig.ts';
 
 /**
  * Récolte du décor.
@@ -18,13 +19,30 @@ import type { Prop, PropKind } from '../world/chunk.ts';
 export const HARVEST_REACH = 70;
 export const HARVEST_COOLDOWN_STEPS = 15;
 
-/** Ce que rapporte chaque type d'élément. */
-export const YIELD: Record<PropKind, number> = { arbre: 3, rocher: 2 };
+/**
+ * Ce que rapporte chaque élément : une matière, et combien.
+ *
+ * C'est la table qui rend les biomes distincts autrement que par leur couleur.
+ * Une forêt donne du bois, une côte de la fibre, un plateau rocheux de la
+ * pierre — et l'on ne bâtit pas la même chose selon l'endroit où l'on s'arrête.
+ */
+export const YIELD: Record<PropKind, { material: Material; amount: number }> = {
+  arbre: { material: 'bois', amount: 3 },
+  rocher: { material: 'pierre', amount: 2 },
+  buisson: { material: 'fibre', amount: 2 },
+  roseau: { material: 'fibre', amount: 3 },
+};
 
 export type HarvestRefusal = 'attente' | 'rien à portée';
 
 export type HarvestOutcome =
-  | { harvested: true; kind: PropKind; gained: number; at: { x: number; y: number } }
+  | {
+      harvested: true;
+      kind: PropKind;
+      material: Material;
+      gained: number;
+      at: { x: number; y: number };
+    }
   | { harvested: false; reason: HarvestRefusal };
 
 /** Identité d'un élément de décor : son morceau et son rang de génération. */
@@ -83,7 +101,7 @@ export function nearestProp(
       for (let index = 0; index < chunk.props.length; index++) {
         if (removed.has(propKey(cx, cy, index))) continue;
         const prop = chunk.props[index]!;
-        const distance = Math.hypot(prop.x - x, prop.y - y);
+        const distance = vectorLength(prop.x - x, prop.y - y);
         if (distance > reach + prop.radius) continue;
         if (!best || distance < best.distance) best = { prop, cx, cy, index, distance };
       }
@@ -116,9 +134,15 @@ export function tryHarvest(
   const mark = world.create();
   stores.harvested.set(mark, { cx: found.cx, cy: found.cy, index: found.index });
 
-  const gained = YIELD[found.prop.kind];
-  inventory.blocs += gained;
+  const { material, amount } = YIELD[found.prop.kind];
+  inventory[material] += amount;
   control.harvestCooldown = HARVEST_COOLDOWN_STEPS;
 
-  return { harvested: true, kind: found.prop.kind, gained, at: { x: found.prop.x, y: found.prop.y } };
+  return {
+    harvested: true,
+    kind: found.prop.kind,
+    material,
+    gained: amount,
+    at: { x: found.prop.x, y: found.prop.y },
+  };
 }

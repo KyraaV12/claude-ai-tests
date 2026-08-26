@@ -1,5 +1,6 @@
 import { Simulation, STEPS_PER_SECOND, PLAYER } from './core/simulation.ts';
 import type { Entity, Snapshot } from './core/world.ts';
+import { MATERIALS } from './core/components.ts';
 import { Engine } from './core/engine.ts';
 import { Recorder, replay, compare } from './core/replay.ts';
 import type { Recording } from './core/replay.ts';
@@ -12,6 +13,7 @@ import { ChunkCache, CHUNK_SIZE, chunkCoordOf } from './world/chunk.ts';
 import { TerrainPainter } from './systems/terrain-painter.ts';
 import { createCamera, follow, screenToWorld } from './world/camera.ts';
 import { biomeAt } from './world/terrain.ts';
+import { clockLabel, phaseAt } from './world/daynight.ts';
 import { ChannelTransport } from './net/channel-transport.ts';
 import { Host } from './net/host.ts';
 import { Client } from './net/client.ts';
@@ -116,20 +118,26 @@ function controlOfPlayer() {
  * plus récent qui intéresse, et gagner du bois répond souvent au refus.
  */
 function actionStatus(): string {
-  const blocs = inventoryOfPlayer()?.blocs ?? 0;
+  const inventory = inventoryOfPlayer();
+  const purse = inventory
+    ? MATERIALS.map((material) => `${inventory[material]} ${material}`).join(' · ')
+    : '—';
   const harvest = simulation.lastHarvest;
   const build = simulation.lastBuild;
 
   if (harvest?.harvested && controlOfPlayer()!.harvestCooldown > 0) {
-    return `${blocs} blocs — +${harvest.gained} (${harvest.kind})`;
+    return `${purse} — +${harvest.gained} ${harvest.material} (${harvest.kind})`;
   }
   if (harvest && !harvest.harvested && harvest.reason !== 'attente') {
-    return `${blocs} blocs — ${harvest.reason}`;
+    return `${purse} — ${harvest.reason}`;
   }
   if (build && !build.placed && build.reason !== 'attente') {
-    return `${blocs} blocs — ${build.reason}`;
+    // Dire *ce qui* manque, pas seulement qu'il manque quelque chose : trois
+    // matières et deux recettes, « sans ressource » ne suffit plus.
+    const detail = build.reason === 'sans ressource' && build.missing ? ` (${build.missing})` : '';
+    return `${purse} — ${build.kind} : ${build.reason}${detail}`;
   }
-  return `${blocs} blocs`;
+  return purse;
 }
 
 /** Démarre un enregistrement sur un monde neuf, moteur en marche. */
@@ -208,6 +216,7 @@ const engine = new Engine(
         y: axis.y,
         build: keyboard.isPressed('KeyE'),
         harvest: keyboard.isPressed('KeyF'),
+        torch: keyboard.isPressed('KeyT'),
       };
 
       if (host) {
@@ -246,6 +255,7 @@ const engine = new Engine(
         viewport,
         palette,
         alpha,
+        steps: simulation.stepCount,
         highlight: inspector.selected(),
         ...(client ? { offsetOf: (entity: Entity) => client!.smoothing.offsetOf(entity) } : {}),
       });
@@ -276,8 +286,11 @@ function refreshOverlay(): void {
     `${position.x.toFixed(0)}, ${position.y.toFixed(0)}`,
     `morceau ${chunkCoordOf(position.x)}, ${chunkCoordOf(position.y)}`,
     biomeAt(SEED, position.x, position.y),
+    // L'heure et la phase : elles ne sont stockées nulle part, elles se
+    // déduisent du compteur de pas affiché juste à côté.
+    `${clockLabel(simulation.stepCount)} ${phaseAt(simulation.stepCount)}`,
     actionStatus(),
-    `${chunks.size} morceaux · ${simulation.stores.harvested.size} récoltés`,
+    `${chunks.size} morceaux · ${simulation.stores.creature.size} bêtes`,
     networkStatus(),
     recorder ? `● ${recorder.frameCount} pas` : `${simulation.world.entityCount} entités`,
   ].join('   ·   ');

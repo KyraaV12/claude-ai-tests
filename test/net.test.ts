@@ -10,9 +10,9 @@ import { Smoothing } from '../src/net/smoothing.ts';
 import type { Message } from '../src/net/protocol.ts';
 
 const SEED = 20260826;
-const STILL: InputFrame = { x: 0, y: 0, build: false, harvest: false };
-const EAST: InputFrame = { x: 1, y: 0, build: false, harvest: false };
-const NORTH: InputFrame = { x: 0, y: -1, build: false, harvest: false };
+const STILL: InputFrame = { x: 0, y: 0, build: false, harvest: false, torch: false };
+const EAST: InputFrame = { x: 1, y: 0, build: false, harvest: false, torch: false };
+const NORTH: InputFrame = { x: 0, y: -1, build: false, harvest: false, torch: false };
 
 interface Rig {
   net: MemoryNetwork;
@@ -64,12 +64,22 @@ test('sans latence, la prédiction du client ne se trompe jamais', () => {
   // C'est le test qui justifie toute l'architecture : le client applique la
   // même demande au même pas que l'hôte, sur le même code. La réconciliation
   // ne doit donc rien avoir à corriger.
+  //
+  // On compte les erreurs de prédiction, et non les corrections : depuis que
+  // le monde décide lui-même de faire apparaître des bêtes, un client tombe
+  // sur des entités qu'il n'a pas inventées. Il ne s'est pas trompé — il n'a
+  // pas pris la décision.
   const r = rig(0);
-  run(r, 200, STILL, EAST);
+  run(r, 400, STILL, EAST);
 
   assert.ok(r.client.lastCorrection, 'aucun état d autorité reçu');
-  assert.equal(r.client.corrections, 0, `écart en ${r.client.lastCorrection?.firstDifference}`);
+  assert.equal(r.client.mispredictions, 0, `écart en ${r.client.lastCorrection?.firstDifference}`);
   assert.equal(r.client.selfCorrections, 0);
+  assert.equal(
+    r.client.corrections,
+    r.client.mispredictions + r.client.rosterChanges,
+    'toute correction doit être imputée : erreur de prédiction ou apparition',
+  );
 });
 
 test('quelle que soit la latence, le client ne se voit jamais corrigé', () => {
@@ -88,8 +98,8 @@ test('un client suit un autre joueur qui garde le cap', () => {
   // faire glisser en ligne droite. Tant que l'autre ne change pas d'avis, la
   // prédiction tombe juste.
   const moving = rig(2);
-  run(moving, 200, NORTH, EAST);
-  assert.equal(moving.client.corrections, 0, `écart en ${moving.client.lastCorrection?.firstDifference}`);
+  run(moving, 400, NORTH, EAST);
+  assert.equal(moving.client.mispredictions, 0, `écart en ${moving.client.lastCorrection?.firstDifference}`);
 });
 
 test('un client ne peut pas deviner qu un autre change de direction', () => {
@@ -100,8 +110,32 @@ test('un client ne peut pas deviner qu un autre change de direction', () => {
   for (let i = 0; i < 500; i++) {
     net_step(capricious, i);
   }
-  assert.ok(capricious.client.corrections > 0, 'un hôte imprévisible aurait dû provoquer des corrections');
+  assert.ok(
+    capricious.client.mispredictions > 0,
+    'un hôte imprévisible aurait dû prendre le client en défaut',
+  );
   assert.equal(capricious.client.selfCorrections, 0, 'le client ne doit jamais se tromper sur lui-même');
+});
+
+test('une bête qui apparaît n est pas comptée comme une erreur du client', () => {
+  // La distinction qui rend le compteur honnête. L'hôte peuple le monde, le
+  // client reçoit ; si l'on mêlait les deux, « corrections » monterait tout
+  // seul et ne dirait plus rien de la qualité de la prédiction.
+  const r = rig(0);
+  run(r, 600, STILL, EAST);
+
+  assert.ok(r.host.simulation.stores.creature.size > 0, 'aucune bête n a peuplé le monde');
+  assert.ok(r.client.rosterChanges > 0, 'le client aurait dû voir la liste d entités changer');
+  assert.equal(r.client.mispredictions, 0);
+});
+
+test('un client ne peuple jamais le monde de son côté', () => {
+  // Il verrait ses bêtes s'évaporer au premier état reçu. Le peuplement est une
+  // décision de l'autorité, comme la pose d'un autre joueur.
+  const lonely = new Client(SEED, new MemoryNetwork(0).connect(), 2);
+  assert.equal(lonely.simulation.authority, false);
+  for (let i = 0; i < 400; i++) lonely.simulation.step([]);
+  assert.equal(lonely.simulation.stores.creature.size, 0);
 });
 
 /** Un pas où l'hôte change de cap tous les dix pas, sans prévenir. */
@@ -257,7 +291,7 @@ test('les deux pairs simulent le même monde sans se l être envoyé', () => {
 
 test('la réconciliation ne perd pas les actions non confirmées', () => {
   const r = rig(2);
-  const building: InputFrame = { x: 0, y: 1, build: true, harvest: false };
+  const building: InputFrame = { x: 0, y: 1, build: true, harvest: false, torch: false };
   run(r, 90, STILL, building);
   settle(r, 60);
 
@@ -342,7 +376,7 @@ test('le client extrapole les autres, sans rejouer leurs actions', () => {
   // Le mouvement n'attend pas ; une pose, si. Rejouer la construction d'un
   // autre ferait clignoter chez le client un bâtiment que l'autorité efface.
   const r = rig(6);
-  const building: InputFrame = { x: 1, y: 0, build: true, harvest: false };
+  const building: InputFrame = { x: 1, y: 0, build: true, harvest: false, torch: false };
 
   // À aucun instant le client ne doit compter plus de constructions que
   // l'autorité : s'il rejouait la demande de pose d'un autre, il en

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Deux joueurs dans un monde</title>
+<title>Un monde qui vit</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400..600&display=swap">
@@ -140,8 +140,8 @@
 </head>
 <body>
   <header>
-    <p class="eyebrow">claude-ai-tests · tranche T6</p>
-    <h1>Deux joueurs</h1>
+    <p class="eyebrow">claude-ai-tests · tranche T8</p>
+    <h1>Un monde qui vit</h1>
     <p class="eyebrow"><a href="../">← banc d'essai</a></p>
   </header>
 
@@ -161,7 +161,8 @@
     <li><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd><span>déplacer</span></li>
     <li><kbd>ZQSD</kbd><span>ou</span><kbd>WASD</kbd></li>
     <li><kbd>F</kbd><span>récolter ce qui est à portée</span></li>
-    <li><kbd>E</kbd><span>poser une construction</span></li>
+    <li><kbd>E</kbd><span>poser un mur (2 pierres)</span></li>
+    <li><kbd>T</kbd><span>planter une torche (1 bois, 1 fibre)</span></li>
     <li><kbd>Espace</kbd><span>pause</span></li>
     <li><kbd>.</kbd><span>avancer d'un pas</span></li>
     <li><kbd>R</kbd><span>enregistrer, puis rejouer et comparer</span></li>
@@ -179,7 +180,13 @@
 
   <p class="note"><em>Réserve honnête</em> : le transport est un <code>BroadcastChannel</code>, qui ne franchit pas le navigateur. Ce n'est pas du multijoueur par Internet — c'est un banc d'essai du netcode sur un site statique, où aucun serveur ne peut vivre. Le transport étant une interface, un WebSocket ou un WebRTC se substituerait sans toucher au netcode.</p>
 
-  <p class="note"><kbd>F</kbd> récolte l'arbre ou le rocher le plus proche — trois blocs pour un arbre, deux pour un rocher. <kbd>E</kbd> pose une construction devant vous, dans la direction où vous alliez, contre un bloc. Huit blocs au départ seulement : bâtir oblige à récolter.</p>
+  <p class="note"><kbd>F</kbd> récolte ce qui est à portée, et <strong>chaque biome donne autre chose</strong> : la forêt du bois, les rochers de la pierre, les buissons et les roseaux de la fibre. <kbd>E</kbd> pose un mur contre deux pierres, <kbd>T</kbd> plante une torche contre un bois et une fibre. Quatre bois, six pierres et deux fibres au départ : au-delà, il faut aller chercher — et donc traverser des biomes différents.</p>
+
+  <p class="note"><strong>La nuit tombe, et il faut de la lumière.</strong> Le cycle dure deux minutes : lever, plein jour, crépuscule, nuit. C'est là que les torches cessent d'être décoratives — et que les loups sortent. Le jour appartient aux cerfs, qui s'écartent dès qu'on approche ; la nuit aux loups, qui font l'inverse, et aux lucioles, qui éclairent faiblement en dérivant. Au lever du jour, chacun rentre chez soi, hors de votre vue.</p>
+
+  <p class="note"><strong>L'heure n'est pas de l'état.</strong> Elle se déduit du compteur de pas, comme le terrain se déduit de la graine. Rien n'est sauvegardé, rien ne circule sur le réseau : deux joueurs voient la même nuit parce qu'ils comptent les mêmes pas. Un rejeu retrouve le même crépuscule sans qu'aucune horloge ait été enregistrée — et aucune de ces fonctions ne lit l'horloge de votre machine, sans quoi une partie de nuit se rejouerait en plein jour.</p>
+
+  <p class="note">Une créature, elle, <em>est</em> de l'état : elle se sauvegarde, se réplique et se rejoue, parce qu'un arbre est toujours là où le générateur le met, tandis qu'une bête, non. Ses décisions ne tirent pourtant aucun hasard : chacune vient d'un hachage de la graine, de l'entité et du pas. La faune apparaît autour des joueurs et s'efface quand plus personne ne la regarde — c'est ce qui borne le compte. Ce que <em>vous</em> avez bâti ou récolté n'est jamais oublié.</p>
 
   <p class="note"><strong>Un arbre est du dérivé, un arbre abattu est de l'état.</strong> C'est la difficulté propre à un monde généré, et voici comment elle est résolue ici : le générateur n'est jamais modifié — il continue de produire cet arbre à cet endroit, pour toujours. Ce qui est enregistré, c'est une <em>exception</em> : le morceau, et le rang de l'élément dans son ordre de génération. Le monde visible se lit comme <em>le généré moins les exceptions</em>. Un test vérifie qu'après récolte, `generateChunk` rend toujours le même nombre d'éléments — si ce test cassait, la frontière aurait été franchie.</p>
 

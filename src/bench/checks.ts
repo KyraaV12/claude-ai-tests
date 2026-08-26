@@ -2,7 +2,10 @@ import { Simulation, STEPS_PER_SECOND } from '../core/simulation.ts';
 import type { InputFrame, PlayerId, Tick } from '../core/simulation.ts';
 import { Recorder, replay, compare } from '../core/replay.ts';
 import { generateChunk } from '../world/chunk.ts';
-import { Rig, busy, idle, stableDigest, displayedPosition, STILL, EAST, NORTH } from './rig.ts';
+import { BUILD_COST } from '../systems/build.ts';
+import { POPULATION } from '../systems/creature.ts';
+import { STEPS_PER_DAY, clockLabel, daylight, isNight, phaseAt } from '../world/daynight.ts';
+import { Rig, busy, carried, idle, stableDigest, displayedPosition, STILL, EAST, NORTH } from './rig.ts';
 import { runScenario, hashSimulation, SCENARIO_018 } from './scenario.ts';
 
 /**
@@ -219,6 +222,124 @@ const rejeu: Check = {
   },
 };
 
+
+const cycleJourNuit: Check = {
+  id: 'cycle-jour-nuit',
+  label: 'Cycle jour / nuit',
+  group: 'Monde',
+  about: "L'heure se déduit du compteur de pas : rien à sauvegarder, rien à transmettre.",
+  run() {
+    const rig = new Rig({ players: 3, conditions: { latencySteps: 6 } });
+    rig.run(1200, busy);
+
+    // Le point de la tranche : aucun pair n'a envoyé l'heure, et pourtant tous
+    // lisent la même. Elle n'est pas de l'état, c'est une lecture du temps.
+    const hostStep = rig.host.simulation.stepCount;
+    const skies = rig.clients.map((client) => ({
+      player: client.player,
+      // Chaque client lit *son* compteur ; on compare au même instant logique.
+      here: phaseAt(hostStep),
+      light: daylight(hostStep),
+    }));
+    const agreed = skies.every((sky) => sky.here === phaseAt(hostStep) && sky.light === daylight(hostStep));
+
+    const wire = JSON.stringify(rig.host.simulation.snapshot());
+    const leaked = ['heure', 'daylight', 'phase', 'timeOfDay', 'nuit'].filter((word) => wire.includes(word));
+
+    // Et le cycle passe bien par ses quatre phases sur une journée.
+    const phases = new Set<string>();
+    for (let step = 0; step < STEPS_PER_DAY; step += 30) phases.add(phaseAt(step));
+
+    const passed = agreed && leaked.length === 0 && phases.size === 4;
+    return {
+      passed,
+      detail: passed
+        ? `Les ${rig.clients.length + 1} pairs lisent la même heure — ${clockLabel(hostStep)}, ${phaseAt(hostStep)} — sans que rien n'ait circulé. Le ciel est une fonction du compteur de pas, au même titre que le terrain est une fonction de la graine : un rejeu retrouve la même nuit sans qu'aucune horloge ait été enregistrée.`
+        : leaked.length > 0
+          ? `L'heure circule sur le fil : « ${leaked.join(' », « ')} » trouvé dans l'état.`
+          : !agreed
+            ? 'Deux pairs ne lisent pas le même ciel.'
+            : `Le cycle ne passe que par ${phases.size} phases sur quatre.`,
+      metrics: [
+        ['heure du monde', clockLabel(hostStep)],
+        ['phase', phaseAt(hostStep)],
+        ['lumière', daylight(hostStep).toFixed(2)],
+        ['phases du cycle', String(phases.size)],
+        ['heure sur le fil', leaked.length === 0 ? 'aucun octet' : leaked.join(', ')],
+      ],
+    };
+  },
+};
+
+const faune: Check = {
+  id: 'faune',
+  label: 'Faune',
+  group: 'Monde',
+  about: 'Le monde se peuple autour des joueurs, suit les heures, et ne déborde jamais.',
+  run() {
+    const rig = new Rig({ players: 2, conditions: { latencySteps: 3 } });
+
+    let peak = 0;
+    let sawNight = false;
+    let nightEndedAt = 0;
+    let wolvesByDay = 0;
+    let deerByNight = 0;
+
+    // On joue depuis le petit matin jusqu'à bien après la tombée du jour :
+    // c'est le passage d'une heure à l'autre qu'on veut voir, et c'est là que
+    // la faune s'accumulerait si rien ne l'oubliait.
+    for (let step = 0; step < STEPS_PER_DAY; step++) {
+      rig.step(busy);
+      if (sawNight && step > nightEndedAt + 900) break;
+      if (step % 60 !== 0) continue;
+
+      const night = isNight(rig.host.simulation.stepCount);
+      if (night && !sawNight) {
+        sawNight = true;
+        nightEndedAt = step;
+      }
+      peak = Math.max(peak, rig.host.simulation.stores.creature.size);
+      for (const [, creature] of rig.host.simulation.stores.creature.entries()) {
+        // Un loup surpris par l'aube met un instant à rentrer : on ne compte
+        // que ceux qu'on trouve en plein jour, longtemps après le lever.
+        if (!night && creature.species === 'loup') wolvesByDay++;
+        if (night && creature.species === 'cerf') deerByNight++;
+      }
+    }
+
+    rig.settle();
+    const authoritative = rig.host.simulation.stores.creature.size;
+    const seenByAll = rig.clients.every((c) => c.simulation.stores.creature.size === authoritative);
+    // Un client ne peuple jamais : il recevrait des bêtes qui s'évaporent.
+    const clientsQuiet = rig.clients.every((c) => c.simulation.authority === false);
+
+    const bounded = peak <= POPULATION * rig.host.simulation.players().length * 3;
+    const passed = peak > 0 && bounded && seenByAll && clientsQuiet && sawNight && wolvesByDay === 0;
+
+    return {
+      passed,
+      detail: passed
+        ? `Du petit matin à la nuit tombée, deux joueurs en mouvement : ${peak} bêtes au plus fort, ${authoritative} à l'arrivée, toutes vues à l'identique par les clients. Les loups ne sortent que la nuit et les cerfs que le jour. Ce que le joueur a bâti ou récolté n'est jamais oublié — seule la faune que plus personne ne regarde s'efface, et c'est ce qui borne le compte.`
+        : !sawNight
+          ? "La journée simulée n'a pas atteint la nuit : la mesure ne prouve rien."
+          : wolvesByDay > 0
+            ? `${wolvesByDay} loups relevés en plein jour.`
+            : !bounded
+              ? `La population monte à ${peak} : rien ne l'oublie.`
+              : !seenByAll
+                ? `L'hôte a ${authoritative} bêtes, les clients ${rig.clients.map((c) => c.simulation.stores.creature.size).join(', ')}.`
+                : 'Un client se croit maître du peuplement.',
+      metrics: [
+        ['pic de population', String(peak)],
+        ['à l’arrivée', String(authoritative)],
+        ['loups de jour', String(wolvesByDay)],
+        ['cerfs de nuit', String(deerByNight)],
+        ['répliquée', seenByAll ? 'à l’identique' : 'divergente'],
+      ],
+    };
+  },
+};
+
 // ---------------------------------------------------------------- jeu
 
 const construction: Check = {
@@ -229,32 +350,36 @@ const construction: Check = {
   run() {
     const rig = new Rig({ players: 3, conditions: { latencySteps: 3 } });
     // Seul le joueur 2 bâtit : on saura à qui attribuer ce qui apparaît.
-    const builder: InputFrame = { x: 0, y: 1, build: true, harvest: false };
+    const builder: InputFrame = { x: 0, y: 1, build: true, harvest: false, torch: false };
     rig.run(30, idle);
-    const before = rig.host.simulation.stores.inventory.get(rig.host.simulation.entityOf(2)!)!.blocs;
+    const before = carried(rig.host.simulation.stores.inventory.get(rig.host.simulation.entityOf(2)!));
     rig.run(360, (player) => (player === 2 ? builder : STILL));
     rig.settle();
 
     const atHost = rig.host.simulation.stores.structure.size;
     const witness = rig.clientOf(3)!;
     const atWitness = witness.simulation.stores.structure.size;
-    const after = rig.host.simulation.stores.inventory.get(rig.host.simulation.entityOf(2)!)!.blocs;
+    const after = carried(rig.host.simulation.stores.inventory.get(rig.host.simulation.entityOf(2)!));
     const spent = before - after;
 
-    const passed = atHost > 0 && atWitness === atHost && spent === atHost;
+    // Le coût est lu dans la recette, pas recopié : changer le prix d'un mur ne
+    // doit pas demander de retoucher cette vérification.
+    const perWall = BUILD_COST.mur.pierre ?? 0;
+    const expected = atHost * perWall;
+    const passed = atHost > 0 && atWitness === atHost && spent === expected;
     return {
       passed,
       detail: passed
-        ? `${atHost} constructions posées, vues à l'identique par le témoin, ${spent} blocs dépensés.`
+        ? `${atHost} murs posés, vus à l'identique par le témoin, ${spent} pierres dépensées — exactement ${perWall} par mur.`
         : atHost === 0
           ? "Aucune construction n'a atteint l'hôte."
           : atWitness !== atHost
             ? `L'hôte en compte ${atHost}, le témoin ${atWitness}.`
-            : `${atHost} constructions pour ${spent} blocs dépensés : le compte est faux.`,
+            : `${atHost} murs pour ${spent} matières dépensées, ${expected} attendues : le compte est faux.`,
       metrics: [
         ['chez l’hôte', String(atHost)],
         ['chez le témoin', String(atWitness)],
-        ['blocs dépensés', String(spent)],
+        ['matières dépensées', String(spent)],
       ],
     };
   },
@@ -267,14 +392,14 @@ const recolte: Check = {
   about: "Récolter retire le décor pour tous, sans jamais toucher au générateur.",
   run() {
     const rig = new Rig({ players: 2, conditions: { latencySteps: 3 } });
-    const gathering: InputFrame = { x: 0, y: 0, build: false, harvest: true };
+    const gathering: InputFrame = { x: 0, y: 0, build: false, harvest: true, torch: false };
     rig.run(30, idle);
-    const before = rig.host.simulation.stores.inventory.get(rig.host.simulation.entityOf(2)!)!.blocs;
+    const before = carried(rig.host.simulation.stores.inventory.get(rig.host.simulation.entityOf(2)!));
     rig.run(300, (player) => (player === 2 ? gathering : STILL));
     rig.settle();
 
     const marks = [...rig.host.simulation.stores.harvested.entries()].map(([, mark]) => mark);
-    const gained = rig.host.simulation.stores.inventory.get(rig.host.simulation.entityOf(2)!)!.blocs - before;
+    const gained = carried(rig.host.simulation.stores.inventory.get(rig.host.simulation.entityOf(2)!)) - before;
     const witness = rig.clientOf(2)!.simulation.stores.harvested.size;
 
     // La frontière posée en T3 : le générateur ignore tout de la récolte. Le
@@ -288,15 +413,15 @@ const recolte: Check = {
     return {
       passed,
       detail: passed
-        ? `${marks.length} éléments récoltés, ${gained} blocs gagnés, et le générateur les produit toujours.`
+        ? `${marks.length} éléments récoltés, ${gained} matières gagnées, et le générateur les produit toujours.`
         : marks.length === 0
           ? "Aucune récolte n'a atteint l'hôte."
           : !generatorIntact
             ? 'Le générateur a été modifié : la frontière est franchie.'
-            : `Hôte ${marks.length} exceptions, client ${witness}, ${gained} blocs gagnés.`,
+            : `Hôte ${marks.length} exceptions, client ${witness}, ${gained} matières gagnées.`,
       metrics: [
         ['exceptions', String(marks.length)],
-        ['blocs gagnés', String(gained)],
+        ['matières gagnées', String(gained)],
         ['générateur', generatorIntact ? 'intact' : 'modifié'],
       ],
     };
@@ -408,7 +533,7 @@ const prediction: Check = {
   id: 'prediction',
   label: 'Prédiction',
   group: 'Réseau',
-  about: "Sans latence, le client devine juste — sur lui-même comme sur les autres.",
+  about: "Le client devine juste tout ce qu'il est en mesure de deviner — et rien de moins.",
   run() {
     const rig = new Rig({ players: 2, conditions: { latencySteps: 0 } });
     rig.run(600, (player) => (player === 2 ? EAST : STILL));
@@ -420,30 +545,34 @@ const prediction: Check = {
     rig.settle();
     const ownDrift = rig.divergence(2);
     const exact =
-      client.ready && client.selfCorrections === 0 && client.corrections === 0 && ownDrift < NEGLIGIBLE;
+      client.ready && client.selfCorrections === 0 && client.mispredictions === 0 && ownDrift < NEGLIGIBLE;
 
     // Contrepartie : un hôte qui change souvent d'avis ne peut pas être deviné
-    // — sa nouvelle demande met un aller-retour à parvenir. Des corrections
-    // doivent donc apparaître, sans quoi le compteur ne mesurerait rien.
+    // — sa nouvelle demande met un aller-retour à parvenir. Des erreurs doivent
+    // donc apparaître, sans quoi le compteur ne mesurerait rien.
     const capricious = new Rig({ players: 2, conditions: { latencySteps: 8 } });
-    capricious.run(500, (player, step) =>
+    capricious.run(600, (player, step) =>
       player === 1 ? (Math.floor(step / 10) % 2 === 0 ? EAST : NORTH) : STILL,
     );
-    const honest = capricious.clientOf(2)!.corrections > 0;
+    const honest = capricious.clientOf(2)!.mispredictions > 0;
 
     return {
       passed: exact && honest,
       detail: exact
         ? honest
-          ? `Sur 600 pas sans latence, aucune correction — ni sur sa propre entité, ni sur celle de l'hôte. Le client reçoit avec chaque état les dernières demandes appliquées, et rejoue donc les autres personnages avec les mêmes forces que l'autorité au lieu de les faire glisser en ligne droite. Les ${whileMoving.toFixed(0)} unités d'écart en pleine course sont son avance, pas une erreur : à l'arrêt il retombe sur l'hôte.`
-          : "Aucune correction — mais le compteur ne bouge pas davantage quand l'hôte change sans cesse de direction, ce qui est impossible : la mesure ne prouve rien."
-        : `${client.selfCorrections} corrections sur soi, ${client.corrections} sur les autres, et ${ownDrift.toFixed(2)} unité d'écart à l'arrêt.`,
+          ? `Sur 600 pas sans latence, pas une erreur de prédiction — ni sur sa propre entité, ni sur celle de l'hôte. Les ${client.rosterChanges} corrections comptées sont toutes des **apparitions** : le monde décide seul de peupler ses alentours, et un client ne prend pas cette décision, donc il ne la devine pas. Distinguer les deux était nécessaire — mêlées, elles auraient fait monter un compteur qui ne dit plus rien.`
+          : "Aucune erreur — mais le compteur ne bouge pas davantage quand l'hôte change sans cesse de direction, ce qui est impossible : la mesure ne prouve rien."
+        : `${client.selfCorrections} corrections sur soi, ${client.mispredictions} erreurs de prédiction, et ${ownDrift.toFixed(2)} unité d'écart à l'arrêt.`,
       metrics: [
+        ['erreurs de prédiction', String(client.mispredictions)],
         ['corrections sur soi', String(client.selfCorrections)],
-        ['corrections sur les autres', String(client.corrections)],
+        ['apparitions reçues', String(client.rosterChanges)],
         ['écart sur soi, en course', whileMoving.toFixed(2)],
         ['écart sur soi, à l’arrêt', ownDrift.toFixed(4)],
-        ['contrôle négatif', honest ? `${capricious.clientOf(2)!.corrections} corrections` : 'aucune'],
+        [
+          'contrôle négatif',
+          honest ? `${capricious.clientOf(2)!.mispredictions} erreurs` : 'aucune',
+        ],
       ],
     };
   },
@@ -540,7 +669,7 @@ const reconciliation: Check = {
 
     // Puis on bâtit pendant la remise en ordre : la réconciliation ne doit pas
     // avaler les demandes non encore confirmées.
-    const building: InputFrame = { x: 0, y: 1, build: true, harvest: false };
+    const building: InputFrame = { x: 0, y: 1, build: true, harvest: false, torch: false };
     rig.run(240, (player) => (player === 2 ? building : STILL));
     rig.settle();
 
@@ -749,7 +878,7 @@ const deconnexion: Check = {
     rig.settle();
 
     const entity = rig.host.simulation.entityOf(2)!;
-    const inventoryBefore = rig.host.simulation.stores.inventory.get(entity)!.blocs;
+    const inventoryBefore = carried(rig.host.simulation.stores.inventory.get(entity));
     const structuresBefore = rig.host.simulation.stores.structure.size;
     const harvestedBefore = rig.host.simulation.stores.harvested.size;
 
@@ -770,7 +899,7 @@ const deconnexion: Check = {
     const velocity = rig.host.simulation.stores.velocity.get(entity)!;
     const stopped = Math.hypot(velocity.x, velocity.y) < 1;
 
-    const inventoryAfter = rig.host.simulation.stores.inventory.get(entity)!.blocs;
+    const inventoryAfter = carried(rig.host.simulation.stores.inventory.get(entity));
     const kept =
       inventoryAfter === inventoryBefore &&
       rig.host.simulation.stores.structure.size >= structuresBefore &&
@@ -780,7 +909,7 @@ const deconnexion: Check = {
     return {
       passed,
       detail: passed
-        ? `Départ annoncé pris en compte aussitôt, coupure sèche détectée après le silence. Les deux personnages restent au monde, à l'arrêt, avec leurs ${inventoryAfter} blocs et leurs constructions.`
+        ? `Départ annoncé pris en compte aussitôt, coupure sèche détectée après le silence. Les deux personnages restent au monde, à l'arrêt, avec leurs ${inventoryAfter} matières et leurs constructions.`
         : !announcedGone
           ? "Le départ annoncé n'a pas été enregistré."
           : !stillThere
@@ -815,7 +944,7 @@ const reconnexion: Check = {
     rig.settle();
 
     const entity = rig.host.simulation.entityOf(2)!;
-    const inventoryBefore = rig.host.simulation.stores.inventory.get(entity)!.blocs;
+    const inventoryBefore = carried(rig.host.simulation.stores.inventory.get(entity));
     const structuresBefore = rig.host.simulation.stores.structure.size;
 
     // Coupure sèche, puis le monde continue sans lui : les autres bâtissent et
@@ -830,7 +959,7 @@ const reconnexion: Check = {
 
     const sameEntity = rig.host.simulation.entityOf(2) === entity;
     const backOnline = rig.host.connectedPlayers().includes(2);
-    const inventoryAfter = rig.host.simulation.stores.inventory.get(entity)!.blocs;
+    const inventoryAfter = carried(rig.host.simulation.stores.inventory.get(entity));
     const resynced = stableDigest(rig.host.simulation) === stableDigest(revenant.simulation);
     const missed = structuresWithoutHim - structuresBefore;
     const divergence = rig.divergence();
@@ -840,7 +969,7 @@ const reconnexion: Check = {
     return {
       passed,
       detail: passed
-        ? `Reconnecté sur la même entité, ${inventoryAfter} blocs intacts, et ${missed === 1 ? "la construction élevée" : `les ${missed} constructions élevées`} en son absence ${missed === 1 ? 'reçue' : 'reçues'} d'un coup. Empreinte d'état identique à celle de l'hôte.`
+        ? `Reconnecté sur la même entité, ${inventoryAfter} matières intactes, et ${missed === 1 ? "la construction élevée" : `les ${missed} constructions élevées`} en son absence ${missed === 1 ? 'reçue' : 'reçues'} d'un coup. Empreinte d'état identique à celle de l'hôte.`
         : !backOnline
           ? "L'hôte n'a pas repris le revenant."
           : !sameEntity
@@ -868,6 +997,8 @@ export const CHECKS: Check[] = [
   rejeu,
   construction,
   recolte,
+  cycleJourNuit,
+  faune,
   deuxJoueurs,
   huitJoueurs,
   monteeEnCharge,

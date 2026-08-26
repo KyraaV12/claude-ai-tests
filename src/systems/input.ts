@@ -1,3 +1,4 @@
+import { vectorLength } from '../core/trig.ts';
 export interface Axis {
   x: number;
   y: number;
@@ -55,7 +56,7 @@ export class Keyboard {
       x += binding[0];
       y += binding[1];
     }
-    const length = Math.hypot(x, y);
+    const length = vectorLength(x, y);
     return length > 0 ? { x: x / length, y: y / length } : { x: 0, y: 0 };
   }
 

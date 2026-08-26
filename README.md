@@ -85,7 +85,7 @@ Ce qui se mesure : un client ne se voit **jamais** corrigé, quelle que soit la 
 
 ## Le banc de vérification
 
-`src/bench/checks.ts` définit dix-huit vérifications comme des **fonctions ordinaires** : ni `node:test`, ni rien du navigateur. Deux harnais les exécutent — `test/bench.test.ts` sous Node, et la page [Test Runner](https://kyraav12.github.io/claude-ai-tests/bench/) dans un fil séparé. Deux listes qui se ressemblent finissent toujours par diverger, et c'est alors le banc qui ment ; ici il n'y en a qu'une.
+`src/bench/checks.ts` définit vingt vérifications comme des **fonctions ordinaires** : ni `node:test`, ni rien du navigateur. Deux harnais les exécutent — `test/bench.test.ts` sous Node, et la page [Test Runner](https://kyraav12.github.io/claude-ai-tests/bench/) dans un fil séparé. Deux listes qui se ressemblent finissent toujours par diverger, et c'est alors le banc qui ment ; ici il n'y en a qu'une.
 
 Chaque vérification rend un verdict **et ses mesures**. Un rouge sans chiffres ne dit pas si l'on est passé de 0,2 à 0,3 ou de 0,2 à 400.
 
@@ -108,6 +108,8 @@ Un test vérifie que le garde-fou garde : on décale la graine d'une unité et l
 | Déconnexion | départ annoncé et coupure sèche, personnage conservé, inventaire intact |
 | Reconnexion | même entité retrouvée, empreinte d'état identique à celle de l'hôte |
 | Fluidité | 50, 100, 200 ms : aucune saccade à l'affichage ; 500 ms : pire saut plafonné à deux fois le pas normal |
+| Cycle jour / nuit | trois pairs lisent la même heure sans qu'un octet ait circulé |
+| Faune | population bornée sur une journée entière, espèces fidèles à l'heure, répliquée à l'identique |
 
 **Ce qui cédera en premier, et le banc le dit :** la bande passante croît linéairement avec le nombre de joueurs, parce que l'état complet est diffusé dix fois par seconde — 9,6 kio par paquet à huit joueurs. Le tick, lui, garde un facteur cinq de marge. C'est l'encodage différentiel qu'il faudra écrire, pas l'optimisation de la boucle.
 
@@ -134,6 +136,40 @@ La réponse n'est pas de toucher à la simulation : le déterminisme, le rejeu e
 Résultat mesuré : **aucune saccade jusqu'à 200 ms** de latence, et à 500 ms le pire saut tombe de 355 à 13 unités. Le client ne se lisse jamais lui-même — ce serait ajouter de la latence ressentie à chaque touche, exactement ce que la prédiction évite.
 
 Ce qui demeure, et qui n'est pas résolu ici : l'horloge du client saute encore. La gestion du temps côté client — l'étirer et le contracter d'un pas à la fois plutôt que de le recaler d'un bond — est la vraie réponse, et elle n'est pas écrite. Une tentative de rendre l'horloge monotone a été mesurée puis abandonnée : elle créait cent recalages à 100 ms là où il n'y en avait aucun.
+
+## Un monde qui vit
+
+### L'heure n'est pas de l'état
+
+Le cycle jour/nuit dure deux minutes et ne se sauvegarde nulle part : `daylight(steps)` est une fonction du compteur de pas, comme le terrain est une fonction de la graine. Rien ne circule sur le réseau, rien n'est enregistré — deux joueurs voient la même nuit parce qu'ils comptent les mêmes pas, et un rejeu retrouve le même crépuscule. Aucune de ces fonctions ne lit l'horloge de la machine ; un test l'interdit, faute de quoi une partie de nuit se rejouerait en plein jour.
+
+La bande de passage a été calibrée en comptant les pas, pas à vue : la moitié du cycle en plein jour, trois dixièmes de nuit, le reste en aube et crépuscule. Une bande étroite donnait onze heures de noir sur vingt-quatre.
+
+Le voile de nuit et l'orange du couchant sont **mêlés** plutôt que choisis : un `if` entre les deux ferait claquer la couleur au moment précis où l'on regarde le ciel. Un test mesure la continuité, en opacité comme en couleur.
+
+### Trois matières, trois emplois
+
+La forêt donne du bois, les rochers de la pierre, les buissons et les roseaux de la fibre. Un mur coûte deux pierres, une torche un bois et une fibre. C'est ce qui rend les biomes distincts autrement que par leur couleur : le lieu où l'on s'arrête décide de ce qu'on peut bâtir. La règle qu'on se donne est qu'aucune matière ne s'accumule pour rien — une quatrième ressource qu'on ramasse sans jamais s'en servir n'enrichit pas le jeu, elle allonge une liste.
+
+### Des bêtes, et pourquoi elles sont de l'état
+
+Une créature **est** de l'état : elle se sauvegarde, se réplique, se rejoue. C'est l'inverse d'un arbre, et la différence tient à une seule chose — un arbre est toujours là où le générateur le met, une bête non.
+
+Ses décisions ne tirent pourtant aucun hasard : chacune vient d'un hachage de (graine, entité, pas). Les cerfs s'écartent le jour, les loups approchent la nuit, les lucioles éclairent en dérivant. Au lever du jour, ce qui n'est plus de saison rentre — hors de la vue du joueur, jamais sous ses yeux.
+
+La faune apparaît autour des joueurs et s'efface quand plus personne ne la regarde : c'est ce qui borne le compte, mesuré à vingt-quatre bêtes au plus fort d'une journée à deux joueurs en mouvement. Ce que le **joueur** a bâti ou récolté n'est jamais oublié.
+
+**Seule l'autorité peuple le monde.** Un client qui devinerait les apparitions verrait ses bêtes s'évaporer au premier état reçu — même raison qui lui interdit de rejouer la pose d'un autre joueur. La conséquence se mesure : les corrections d'un client se répartissent maintenant entre *erreurs de prédiction* (zéro, à toutes les latences) et *apparitions reçues*. Mêler les deux aurait fait monter un compteur qui ne dit plus rien.
+
+## Le même monde sur tous les moteurs
+
+Le banc a trouvé une panne qu'aucun test numérique ne pouvait voir : **le scénario de référence rendait une empreinte en CI et une autre dans le navigateur.** Même graine, quarante-neuf entités des deux côtés, et un `y` qui différait à la quatorzième décimale — assez pour que deux SHA-256 n'aient plus rien à voir.
+
+La cause, mesurée sur quatre mille angles entre le V8 de Node et celui de Chromium : `Math.sin` et `Math.cos` diffèrent sur les derniers bits. `Math.sqrt`, `Math.atan2`, `Math.exp` et `Math.hypot` s'accordaient. La norme n'oblige à rien pour les fonctions transcendantes ; elle oblige, en revanche, pour `+`, `−`, `×`, `÷` et la racine carrée.
+
+`src/core/trig.ts` n'emploie que celles-là : réduction d'intervalle avec π/2 coupé en deux, puis les noyaux polynomiaux de fdlibm dans un ordre fixe. À un demi-bit de `Math.sin`, et identique partout. Depuis, les deux moteurs produisent le même monde au bit près — vérifié en comparant l'instantané complet, minifié et non minifié.
+
+`test/reproductible.test.ts` **lit le code** pour empêcher le retour de la panne : aucun fichier de simulation ne peut nommer `Math.sin`, `Math.cos`, `Math.hypot` ni les autres, ni lire une horloge murale. Un test qui compare deux nombres ne l'aurait pas rattrapée — il aurait fallu deux moteurs pour la voir.
 
 ## Récolter
 

@@ -53,10 +53,25 @@ export interface Controlled {
   harvestCooldown: number;
 }
 
-/** Ce que porte une entité. Le début de l'inventaire du plan. */
-export interface Inventory {
-  blocs: number;
+/**
+ * Les matières du monde.
+ *
+ * Trois, et chacune a un emploi — c'est la règle qu'on se donne ici. Une
+ * quatrième ressource qu'on ramasse sans jamais s'en servir n'enrichit pas le
+ * jeu, elle allonge une liste.
+ */
+export type Material = 'bois' | 'pierre' | 'fibre';
+
+export const MATERIALS: readonly Material[] = ['bois', 'pierre', 'fibre'] as const;
+
+/** Ce que porte une entité. Un compte par matière, jamais de champ absent. */
+export type Inventory = Record<Material, number>;
+
+export function emptyInventory(): Inventory {
+  return { bois: 0, pierre: 0, fibre: 0 };
 }
+
+export type StructureKind = 'mur' | 'torche';
 
 /**
  * Une construction posée par le joueur.
@@ -66,6 +81,19 @@ export interface Inventory {
  */
 export interface Structure {
   placedAtStep: number;
+  kind: StructureKind;
+}
+
+/**
+ * Ce qui éclaire autour de soi.
+ *
+ * Séparé de `Structure` : la lumière n'est pas une propriété du bâti. Une
+ * créature luminescente ou un feu de camp la porteraient aussi bien, sans
+ * qu'il faille les déclarer constructions.
+ */
+export interface Light {
+  /** Portée de l'éclairage, en unités du monde. */
+  radius: number;
 }
 
 /**
@@ -85,6 +113,28 @@ export interface Harvested {
   index: number;
 }
 
+export type Species = 'cerf' | 'loup' | 'luciole';
+
+/**
+ * Ce qui fait qu'une entité est vivante plutôt que posée.
+ *
+ * Tout y est de la donnée pure, donc sérialisable : le cap courant, le compte
+ * à rebours de la prochaine décision, et le point d'attache. Aucune fonction,
+ * aucune référence — sinon l'état ne pourrait ni se sauvegarder ni se
+ * transmettre, et une créature ne se rejouerait pas.
+ */
+export interface Creature {
+  species: Species;
+  /** Cap courant, vecteur unitaire. */
+  headingX: number;
+  headingY: number;
+  /** Pas restants avant de choisir un nouveau cap. */
+  decideIn: number;
+  /** Point d'attache : elle y revient plutôt que de partir à l'infini. */
+  homeX: number;
+  homeY: number;
+}
+
 export interface Stores {
   transform: ComponentStore<Transform>;
   velocity: ComponentStore<Velocity>;
@@ -94,6 +144,8 @@ export interface Stores {
   inventory: ComponentStore<Inventory>;
   structure: ComponentStore<Structure>;
   harvested: ComponentStore<Harvested>;
+  light: ComponentStore<Light>;
+  creature: ComponentStore<Creature>;
 }
 
 export function createStores(world: World): Stores {
@@ -106,6 +158,8 @@ export function createStores(world: World): Stores {
     inventory: world.register(new ComponentStore<Inventory>('inventory')),
     structure: world.register(new ComponentStore<Structure>('structure')),
     harvested: world.register(new ComponentStore<Harvested>('harvested')),
+    light: world.register(new ComponentStore<Light>('light')),
+    creature: world.register(new ComponentStore<Creature>('creature')),
   };
 }
 

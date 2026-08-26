@@ -1,11 +1,14 @@
 import { Simulation } from '../core/simulation.ts';
 import type { InputFrame, PlayerId } from '../core/simulation.ts';
+import { MATERIALS } from '../core/components.ts';
+import type { Inventory } from '../core/components.ts';
 import { MemoryNetwork } from '../net/memory-transport.ts';
 import type { NetworkConditions } from '../net/memory-transport.ts';
 import { Host } from '../net/host.ts';
 import { Client } from '../net/client.ts';
 import { STEPS_PER_SECOND, STEP_SECONDS } from '../core/simulation.ts';
 import { sha256 } from './hash.ts';
+import { vectorLength, cos, sin } from '../core/trig.ts';
 
 /**
  * Un banc réseau complet, monté en mémoire.
@@ -19,11 +22,11 @@ import { sha256 } from './hash.ts';
  * tient à 500 ms ? ». Les deviner ne coûterait rien et ne prouverait rien.
  */
 
-export const STILL: InputFrame = { x: 0, y: 0, build: false, harvest: false };
-export const EAST: InputFrame = { x: 1, y: 0, build: false, harvest: false };
-export const WEST: InputFrame = { x: -1, y: 0, build: false, harvest: false };
-export const NORTH: InputFrame = { x: 0, y: -1, build: false, harvest: false };
-export const SOUTH: InputFrame = { x: 0, y: 1, build: false, harvest: false };
+export const STILL: InputFrame = { x: 0, y: 0, build: false, harvest: false, torch: false };
+export const EAST: InputFrame = { x: 1, y: 0, build: false, harvest: false, torch: false };
+export const WEST: InputFrame = { x: -1, y: 0, build: false, harvest: false, torch: false };
+export const NORTH: InputFrame = { x: 0, y: -1, build: false, harvest: false, torch: false };
+export const SOUTH: InputFrame = { x: 0, y: 1, build: false, harvest: false, torch: false };
 
 /** Ce que chaque joueur demande à un pas donné. Pure : le banc doit se rejouer. */
 export type Script = (player: PlayerId, step: number) => InputFrame;
@@ -41,10 +44,10 @@ export function busy(player: PlayerId, step: number): InputFrame {
   const angle = player * 2.399963;
   const phase = (step + player * 37) % 240;
   if (phase < 140) {
-    return { x: Math.cos(angle), y: Math.sin(angle), build: false, harvest: false };
+    return { x: cos(angle), y: sin(angle), build: false, harvest: false, torch: false };
   }
-  if (phase < 200) return { x: 0, y: 0, build: false, harvest: true };
-  return { x: 0, y: 0, build: true, harvest: false };
+  if (phase < 200) return { x: 0, y: 0, build: false, harvest: true, torch: false };
+  return { x: 0, y: 0, build: true, harvest: false, torch: false };
 }
 
 export interface RigOptions {
@@ -186,7 +189,7 @@ export class Rig {
       const entity = this.host.simulation.entityOf(player);
       if (entity === null) continue;
       const v = this.host.simulation.stores.velocity.get(entity);
-      if (v) fastest = Math.max(fastest, Math.hypot(v.x, v.y));
+      if (v) fastest = Math.max(fastest, vectorLength(v.x, v.y));
     }
     return fastest;
   }
@@ -203,7 +206,7 @@ export class Rig {
         const a = this.host.simulation.stores.transform.get(here);
         const b = client.simulation.stores.transform.get(there);
         if (!a || !b) continue;
-        worst = Math.max(worst, Math.hypot(a.x - b.x, a.y - b.y));
+        worst = Math.max(worst, vectorLength(a.x - b.x, a.y - b.y));
       }
     }
     return worst;
@@ -231,6 +234,11 @@ export class Rig {
       divergence: this.divergence(),
     };
   }
+}
+
+/** Tout ce que porte une entité, matières confondues. */
+export function carried(inventory: Inventory | undefined): number {
+  return inventory ? MATERIALS.reduce((sum, material) => sum + inventory[material], 0) : 0;
 }
 
 /**
@@ -276,7 +284,9 @@ export function stableDigest(simulation: Simulation): string {
     .players()
     .map((player) => {
       const entity = simulation.entityOf(player);
-      return `${player}:${entity === null ? '-' : (simulation.stores.inventory.get(entity)?.blocs ?? '-')}`;
+      if (entity === null) return `${player}:-`;
+      const inventory = simulation.stores.inventory.get(entity);
+      return `${player}:${inventory ? MATERIALS.map((m) => `${m}=${inventory[m]}`).join(',') : '-'}`;
     })
     .sort();
 
