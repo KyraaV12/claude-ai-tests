@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T0 — boucle et Transform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400..600&display=swap">
+<style>
+  :root{
+    color-scheme: light dark;
+    --paper:#EBEEF3; --surface:#F9FAFC; --ink:#0F141C; --muted:#596373;
+    --line:#D2D9E3; --line-strong:#B7C1CE; --accent:#22409E; --accent-soft:#E2E8F8; --grid:#C6D0DE;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#0B0F16; --surface:#131A25; --ink:#E6EBF3; --muted:#909CAF;
+      --line:#212A38; --line-strong:#2F3A4A; --accent:#94ACFF; --accent-soft:#1A2440; --grid:#243040;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0B0F16; --surface:#131A25; --ink:#E6EBF3; --muted:#909CAF;
+    --line:#212A38; --line-strong:#2F3A4A; --accent:#94ACFF; --accent-soft:#1A2440; --grid:#243040;
+  }
+
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; min-height:100vh; background:var(--paper); color:var(--ink);
+    font-family:"Source Serif 4", Georgia, serif; font-size:1rem; line-height:1.6;
+    display:flex; flex-direction:column; gap:1rem;
+    padding:clamp(1rem,3vw,2rem);
+  }
+  a{ color:var(--accent); }
+  a:focus-visible, canvas:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
+
+  header{ display:flex; flex-wrap:wrap; align-items:baseline; gap:.6rem 1.25rem; }
+  h1{
+    font-family:Archivo, "Helvetica Neue", Arial, sans-serif; font-weight:700;
+    letter-spacing:-.03em; font-size:clamp(1.5rem,4vw,2.1rem); margin:0;
+  }
+  .eyebrow, .mono{
+    font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:.72rem; font-weight:500;
+    letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
+  }
+
+  .stage{
+    flex:1; min-height:340px;
+    border:1px solid var(--line); border-bottom:0; border-radius:3px 3px 0 0;
+    background:var(--surface); overflow:hidden;
+  }
+  canvas{ display:block; width:100%; height:100%; }
+
+  /* Hors du canevas, jamais par-dessus : une barre d'état qui masque le jeu
+     est exactement ce qu'un outil de mise au point ne doit pas faire. */
+  #overlay{
+    font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:.72rem;
+    color:var(--muted); background:var(--accent-soft);
+    border:1px solid var(--line); border-radius:0 0 3px 3px;
+    padding:.45rem .7rem;
+    font-variant-numeric:tabular-nums; white-space:nowrap; overflow-x:auto;
+  }
+
+  .keys{ display:flex; flex-wrap:wrap; gap:.4rem 1.5rem; margin:0; padding:0; list-style:none; }
+  .keys li{ display:flex; gap:.5rem; align-items:baseline; }
+  kbd{
+    font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:.72rem;
+    border:1px solid var(--line-strong); border-bottom-width:2px; border-radius:3px;
+    padding:.1rem .35rem; color:var(--ink); background:var(--surface);
+  }
+  .note{ color:var(--muted); font-size:.92rem; max-width:70ch; margin:0; }
+</style>
+</head>
+<body>
+  <header>
+    <p class="eyebrow">claude-ai-tests · tranche T0</p>
+    <h1>Boucle et Transform</h1>
+    <p class="eyebrow"><a href="../">← banc d'essai</a></p>
+  </header>
+
+  <div class="stage">
+    <canvas id="scene" tabindex="0" aria-label="Aire de simulation"></canvas>
+  </div>
+  <div id="overlay" role="status" aria-live="off">initialisation…</div>
+
+  <ul class="keys">
+    <li><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd><span>déplacer</span></li>
+    <li><kbd>ZQSD</kbd><span>ou</span><kbd>WASD</kbd></li>
+    <li><kbd>O</kbd><span>capturer l'état</span></li>
+    <li><kbd>P</kbd><span>le restaurer</span></li>
+  </ul>
+
+  <p class="note">La simulation avance à 60 pas fixes par seconde, indépendamment de la fréquence de l'écran ; le rendu interpole entre deux pas. Le monde fait 1000 × 600 unités quelle que soit la taille de la fenêtre, et les positions initiales viennent d'un générateur à graine — deux chargements produisent le même monde. Capturez avec <kbd>O</kbd>, déplacez-vous, restaurez avec <kbd>P</kbd> : l'état revient exactement où il était.</p>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

@@ -24,10 +24,24 @@ jobs:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
+      - name: Installer Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      # Rien n'est publié si les types ou les tests échouent : le site en
+      # ligne ne peut pas être en avance sur ce qui a été vérifié.
+      - name: Vérifier et construire
+        run: npm run check
+
       - name: Empaqueter le site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: dist
 
       - name: Déployer
         id: deployment
