@@ -73,11 +73,26 @@ function playerPosition(): { x: number; y: number } {
   return transform ? { x: transform.x, y: transform.y } : simulation.spawn;
 }
 
-/** Ce que la dernière tentative de pose a donné, dit au joueur. */
-function buildStatus(): string {
+/**
+ * Ce que les dernières tentatives ont donné, dit au joueur.
+ *
+ * Une réussite de récolte prime sur un refus de pose : c'est l'événement le
+ * plus récent qui intéresse, et gagner du bois répond souvent au refus.
+ */
+function actionStatus(): string {
   const blocs = simulation.stores.inventory.get(PLAYER)?.blocs ?? 0;
-  const last = simulation.lastBuild;
-  if (last && !last.placed && last.reason !== 'attente') return `${blocs} blocs — ${last.reason}`;
+  const harvest = simulation.lastHarvest;
+  const build = simulation.lastBuild;
+
+  if (harvest?.harvested && simulation.stores.controlled.get(PLAYER)!.harvestCooldown > 0) {
+    return `${blocs} blocs — +${harvest.gained} (${harvest.kind})`;
+  }
+  if (harvest && !harvest.harvested && harvest.reason !== 'attente') {
+    return `${blocs} blocs — ${harvest.reason}`;
+  }
+  if (build && !build.placed && build.reason !== 'attente') {
+    return `${blocs} blocs — ${build.reason}`;
+  }
   return `${blocs} blocs`;
 }
 
@@ -144,7 +159,12 @@ const engine = new Engine(
       const axis = keyboard.axis();
       // L'action de pose fait partie de l'entrée : un geste hors de la trame
       // ne serait pas enregistré, et le rejeu divergerait sans explication.
-      const input = { x: axis.x, y: axis.y, build: keyboard.isPressed('KeyE') };
+      const input = {
+        x: axis.x,
+        y: axis.y,
+        build: keyboard.isPressed('KeyE'),
+        harvest: keyboard.isPressed('KeyF'),
+      };
       recorder?.capture(input);
       simulation.step(input);
     },
@@ -190,8 +210,8 @@ function refreshOverlay(): void {
     `${position.x.toFixed(0)}, ${position.y.toFixed(0)}`,
     `morceau ${chunkCoordOf(position.x)}, ${chunkCoordOf(position.y)}`,
     biomeAt(SEED, position.x, position.y),
-    buildStatus(),
-    `${chunks.size} en mémoire · ${chunks.generationCount} calculés`,
+    actionStatus(),
+    `${chunks.size} morceaux · ${simulation.stores.harvested.size} récoltés`,
     recorder ? `● ${recorder.frameCount} pas` : `${simulation.world.entityCount} entités`,
   ].join('   ·   ');
 }

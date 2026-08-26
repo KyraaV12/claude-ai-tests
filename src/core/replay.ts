@@ -25,7 +25,7 @@ export class Recorder {
 
   /** Copie l'entrée du pas : la garder par référence la ferait muter sous nos pieds. */
   capture(input: InputFrame): void {
-    this.frames.push({ x: input.x, y: input.y, build: input.build });
+    this.frames.push({ x: input.x, y: input.y, build: input.build, harvest: input.harvest });
   }
 
   get frameCount(): number {

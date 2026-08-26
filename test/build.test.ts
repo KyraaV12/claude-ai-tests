@@ -7,8 +7,8 @@ import { biomeAt, isWater } from '../src/world/terrain.ts';
 import { buildTarget, BUILD_COOLDOWN_STEPS, BUILD_SIZE } from '../src/systems/build.ts';
 
 const SEED = 20260826;
-const IDLE: InputFrame = { x: 0, y: 0, build: false };
-const BUILD: InputFrame = { x: 0, y: 0, build: true };
+const IDLE: InputFrame = { x: 0, y: 0, build: false, harvest: false };
+const BUILD: InputFrame = { x: 0, y: 0, build: true, harvest: false };
 
 function structures(simulation: Simulation): number {
   return simulation.stores.structure.size;
@@ -57,12 +57,12 @@ test('maintenir la touche ne sème pas une construction par pas', () => {
 
 test('le temps d attente écoulé et après s être déplacé, on peut reposer', () => {
   const simulation = new Simulation(SEED);
-  simulation.step({ x: 1, y: 0, build: true });
+  simulation.step({ x: 1, y: 0, build: true, harvest: false });
 
   // Se déplacer est nécessaire : immobile, la seconde pose viserait le même
   // point et se heurterait à la première. C'est le comportement voulu.
-  for (let i = 0; i < 30; i++) simulation.step({ x: 1, y: 0, build: false });
-  simulation.step({ x: 1, y: 0, build: true });
+  for (let i = 0; i < 30; i++) simulation.step({ x: 1, y: 0, build: false, harvest: false });
+  simulation.step({ x: 1, y: 0, build: true, harvest: false });
 
   assert.equal(structures(simulation), 2);
 });
@@ -78,11 +78,11 @@ test('immobile, on ne peut pas empiler au même endroit', () => {
 
 test('la direction du regard décide de l endroit', () => {
   const north = new Simulation(SEED);
-  north.step({ x: 0, y: -1, build: false });
+  north.step({ x: 0, y: -1, build: false, harvest: false });
   const up = buildTarget(north.stores, PLAYER)!;
 
   const east = new Simulation(SEED);
-  east.step({ x: 1, y: 0, build: false });
+  east.step({ x: 1, y: 0, build: false, harvest: false });
   const right = buildTarget(east.stores, PLAYER)!;
 
   assert.ok(up.y < north.stores.transform.get(PLAYER)!.y, 'viser le nord doit poser au nord');
@@ -159,6 +159,7 @@ test('une session avec constructions se rejoue à l identique', () => {
       x: turning === 0 ? 1 : turning === 2 ? -1 : 0,
       y: turning === 1 ? 1 : turning === 3 ? -1 : 0,
       build: i % 15 === 0,
+      harvest: false,
     });
   }
 
@@ -179,7 +180,7 @@ test('une construction en moins fait diverger le rejeu', () => {
   // Contrôle négatif : si retirer une pose ne changeait rien, le test
   // précédent ne prouverait pas grand-chose.
   const frames: InputFrame[] = [];
-  for (let i = 0; i < 120; i++) frames.push({ x: 1, y: 0, build: i % 15 === 0 });
+  for (let i = 0; i < 120; i++) frames.push({ x: 1, y: 0, build: i % 15 === 0, harvest: false });
 
   const reference = replay({ seed: SEED, frames });
   const withoutOne = replay({ seed: SEED, frames: frames.map((f, i) => (i === 30 ? { ...f, build: false } : f)) });

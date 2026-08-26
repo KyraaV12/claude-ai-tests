@@ -11,12 +11,12 @@ const SEED = 4242;
 function scriptedInputs(count: number): InputFrame[] {
   const random = createRandom(7);
   const frames: InputFrame[] = [];
-  let current: InputFrame = { x: 0, y: 0, build: false };
+  let current: InputFrame = { x: 0, y: 0, build: false, harvest: false };
   for (let i = 0; i < count; i++) {
     if (i % 17 === 0) {
       const angle = random() * Math.PI * 2;
       // Une pose de temps en temps : l'action doit être rejouée comme le reste.
-      current = { x: Math.cos(angle), y: Math.sin(angle), build: i % 51 === 0 };
+      current = { x: Math.cos(angle), y: Math.sin(angle), build: i % 51 === 0, harvest: false };
     }
     frames.push(current);
   }
@@ -60,12 +60,12 @@ test('rejouer un enregistrement redonne l état de la session enregistrée', () 
 
 test('l enregistrement copie les entrées au lieu de les référencer', () => {
   const recorder = new Recorder(SEED);
-  const shared: InputFrame = { x: 1, y: 0, build: true };
+  const shared: InputFrame = { x: 1, y: 0, build: true, harvest: false };
   recorder.capture(shared);
   shared.x = -1; // le clavier réutiliserait volontiers le même objet
   shared.build = false;
 
-  assert.deepEqual(recorder.finish().frames[0], { x: 1, y: 0, build: true });
+  assert.deepEqual(recorder.finish().frames[0], { x: 1, y: 0, build: true, harvest: false });
 });
 
 test('un enregistrement pèse bien moins qu une suite d instantanés', () => {
@@ -110,7 +110,7 @@ test('compare reconnaît deux états identiques', () => {
 
 test('le temps logique ne dépend que du nombre de pas', () => {
   const simulation = new Simulation(SEED);
-  for (let i = 0; i < 90; i++) simulation.step({ x: 0, y: 0, build: false });
+  for (let i = 0; i < 90; i++) simulation.step({ x: 0, y: 0, build: false, harvest: false });
 
   assert.equal(simulation.stepCount, 90);
   assert.equal(simulation.elapsedSeconds, 1.5);

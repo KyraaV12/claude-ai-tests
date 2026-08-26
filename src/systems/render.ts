@@ -5,6 +5,7 @@ import { visibleChunks, worldToScreen } from '../world/camera.ts';
 import { CHUNK_SIZE } from '../world/chunk.ts';
 import type { ChunkCache } from '../world/chunk.ts';
 import type { TerrainPainter } from './terrain-painter.ts';
+import { harvestedKeys, propKey } from './harvest.ts';
 
 const PROP_COLORS = { arbre: '#274C31', rocher: '#6E7275' };
 
@@ -36,10 +37,16 @@ export function render(ctx: CanvasRenderingContext2D, scene: Scene): void {
   drawTerrain(ctx, scene);
 
   // Le décor d'abord, les entités ensuite : ce qui bouge passe devant.
+  // Ce qui a été récolté est retranché ici, à la lecture — le générateur, lui,
+  // continue de le produire.
+  const removed = harvestedKeys(stores);
   const range = visibleChunks(camera, viewport, CHUNK_SIZE);
   for (let cy = range.minY; cy <= range.maxY; cy++) {
     for (let cx = range.minX; cx <= range.maxX; cx++) {
-      for (const prop of chunks.get(cx, cy).props) {
+      const props = chunks.get(cx, cy).props;
+      for (let index = 0; index < props.length; index++) {
+        if (removed.has(propKey(cx, cy, index))) continue;
+        const prop = props[index]!;
         const point = worldToScreen(camera, viewport, prop.x, prop.y);
         ctx.beginPath();
         ctx.arc(point.x, point.y, prop.radius / camera.scale, 0, Math.PI * 2);
