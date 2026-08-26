@@ -14,6 +14,8 @@ puis ouvrir http://localhost:8000. Un double-clic sur le fichier fonctionne auss
 
 ## Publication
 
-Le workflow `.github/workflows/pages.yml` déploie la racine du dépôt sur GitHub Pages à chaque push sur `main`. Il active Pages lui-même au premier passage (`configure-pages` avec `enablement: true`), aucun réglage manuel n'est nécessaire.
+Le workflow `.github/workflows/pages.yml` déploie la racine du dépôt sur GitHub Pages à chaque push sur `main`, et peut aussi être lancé à la main (`workflow_dispatch`).
+
+Prérequis, à faire une seule fois : dans Settings → Pages, choisir **Source : GitHub Actions**. Le workflow ne crée pas le site lui-même — le `GITHUB_TOKEN` d'Actions n'a pas les droits nécessaires.
 
 Site : https://kyraav12.github.io/claude-ai-tests/
