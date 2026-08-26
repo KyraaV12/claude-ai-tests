@@ -31,7 +31,12 @@ npx serve dist    # ou : python3 -m http.server -d dist 8000
 
 ## Publication
 
-Le workflow `.github/workflows/pages.yml` vérifie les types, exécute les tests, construit `dist/` et le publie sur GitHub Pages à chaque push sur `main`. Il peut aussi être lancé à la main (`workflow_dispatch`). Une erreur de type ou un test rouge arrête le déploiement : le site en ligne ne peut pas être en avance sur ce qui a été vérifié.
+`.github/workflows/pages.yml` contient deux jobs :
+
+- **`check`** — types, tests, construction. Tourne sur chaque pull request, donc le signal arrive avant la fusion.
+- **`deploy`** — construit `dist/` et le publie sur GitHub Pages. Ne tourne que sur `main` (ou à la main via `workflow_dispatch`), et seulement si `check` est passé.
+
+Une erreur de type ou un test rouge arrête la chaîne : le site en ligne ne peut pas être en avance sur ce qui a été vérifié.
 
 Pages est configuré avec **Source : GitHub Actions** (réglage fait une fois dans Settings → Pages). Le workflow ne peut pas créer le site lui-même : le `GITHUB_TOKEN` d'Actions n'a pas le droit de le faire.
 
